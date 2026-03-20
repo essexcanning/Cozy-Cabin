@@ -652,6 +652,30 @@ const drawObject = (ctx: CanvasRenderingContext2D, obj: GameObject) => {
     // Mantle
     ctx.fillStyle = '#4e342e';
     ctx.fillRect(-obj.width/2 - 5, -obj.height/2, obj.width + 10, 8);
+  } else if (obj.type === 'mirror') {
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(-obj.width/2 + 5, obj.height/2, obj.width, 10);
+
+    // Frame
+    ctx.fillStyle = '#ffd54f'; // Gold frame
+    ctx.beginPath();
+    ctx.roundRect(-obj.width/2, -obj.height/2, obj.width, obj.height, 15);
+    ctx.fill();
+
+    // Glass
+    ctx.fillStyle = '#e1f5fe'; // Light blue glass
+    ctx.beginPath();
+    ctx.roundRect(-obj.width/2 + 4, -obj.height/2 + 4, obj.width - 8, obj.height - 8, 12);
+    ctx.fill();
+
+    // Reflection lines
+    ctx.strokeStyle = '#b3e5fc';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-obj.width/2 + 10, obj.height/2 - 10);
+    ctx.lineTo(obj.width/2 - 10, -obj.height/2 + 10);
+    ctx.stroke();
   } else if (obj.type === 'bookshelf') {
     // Shadow
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
@@ -741,6 +765,57 @@ const drawObject = (ctx: CanvasRenderingContext2D, obj: GameObject) => {
       // Post at the center
       ctx.fillRect(-obj.width/2 - 4, -3, obj.width + 8, 6);
     }
+  } else if (obj.type === 'cat') {
+    // Sleeping cat
+    ctx.fillStyle = '#ff9800'; // Orange tabby
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 10, 8, 0, 0, Math.PI*2);
+    ctx.fill();
+    // Ears
+    ctx.beginPath();
+    ctx.moveTo(-6, -6); ctx.lineTo(-8, -12); ctx.lineTo(-2, -8);
+    ctx.moveTo(6, -6); ctx.lineTo(8, -12); ctx.lineTo(2, -8);
+    ctx.fill();
+    // Tail
+    ctx.strokeStyle = '#f57c00';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(8, 2);
+    ctx.quadraticCurveTo(15, 5, 12, 10);
+    ctx.stroke();
+  } else if (obj.type === 'luxury_rug') {
+    // Fancy rug
+    ctx.fillStyle = '#880e4f'; // Deep purple/red
+    ctx.beginPath();
+    ctx.roundRect(-obj.width/2, -obj.height/2, obj.width, obj.height, 10);
+    ctx.fill();
+    ctx.strokeStyle = '#ffd54f';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-obj.width/2 + 5, -obj.height/2 + 5, obj.width - 10, obj.height - 10);
+    // Star pattern
+    ctx.fillStyle = '#ffca28';
+    ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI*2); ctx.fill();
+  } else if (obj.type === 'high_end_lamp') {
+    // Base
+    ctx.fillStyle = '#37474f';
+    ctx.fillRect(-5, obj.height/2 - 5, 10, 5);
+    // Stand
+    ctx.fillRect(-2, -obj.height/2 + 10, 4, obj.height - 15);
+    // Shade
+    ctx.fillStyle = '#fff9c4';
+    ctx.beginPath();
+    ctx.moveTo(-10, -obj.height/2 + 15);
+    ctx.lineTo(10, -obj.height/2 + 15);
+    ctx.lineTo(5, -obj.height/2);
+    ctx.lineTo(-5, -obj.height/2);
+    ctx.fill();
+    // Glow
+    const time = Date.now() / 500;
+    const glow = 15 + Math.sin(time) * 2;
+    ctx.fillStyle = `rgba(255, 235, 59, 0.2)`;
+    ctx.beginPath();
+    ctx.arc(0, -obj.height/2 + 10, glow, 0, Math.PI*2);
+    ctx.fill();
   }
 
   ctx.restore();

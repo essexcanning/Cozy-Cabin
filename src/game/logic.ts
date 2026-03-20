@@ -174,7 +174,7 @@ export const updateGame = (state: GameState, deltaTime: number) => {
       if (obj.type === 'bed') {
         state.interactionText = "Press E to sleep";
       } else if (obj.type === 'mailbox') {
-        state.interactionText = "No mail today!";
+        state.interactionText = "Check Relationship Tasks";
       } else if (obj.type === 'tree') {
         state.interactionText = "Press E to gather wood";
       } else if (obj.type === 'chest') {
@@ -183,6 +183,8 @@ export const updateGame = (state: GameState, deltaTime: number) => {
         state.interactionText = "Read a book";
       } else if (obj.type === 'fireplace') {
         state.interactionText = "Warm your hands";
+      } else if (obj.type === 'mirror') {
+        state.interactionText = "Talk to Relationship Coach";
       } else if (obj.type === 'cabin') {
         // Handled by collision
       }

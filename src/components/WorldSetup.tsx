@@ -29,7 +29,17 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
       await setDoc(doc(db, 'worlds', newWorldId), {
         inviteCode: code,
         ownerId: auth.currentUser.uid,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        shared: {
+          wood: 0,
+          cozyCoins: 0,
+          tasks: [
+            { id: 't1', text: 'Send a sweet message', completed: false },
+            { id: 't2', text: 'Plan a weekend walk', completed: false },
+            { id: 't3', text: 'Complete a joint check-in', completed: false }
+          ],
+          purchasedItems: []
+        }
       });
 
       // Update user profile

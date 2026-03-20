@@ -34,12 +34,13 @@ service cloud.firestore {
     }
     
     function isValidWorld() {
-      return hasOnlyAllowedFields(['inviteCode', 'ownerId', 'partnerId', 'createdAt']) &&
+      return hasOnlyAllowedFields(['inviteCode', 'ownerId', 'partnerId', 'createdAt', 'shared']) &&
              request.resource.data.inviteCode is string &&
              request.resource.data.inviteCode.size() == 6 &&
              request.resource.data.ownerId is string &&
              request.resource.data.createdAt is timestamp &&
-             (!('partnerId' in request.resource.data) || request.resource.data.partnerId is string);
+             (!('partnerId' in request.resource.data) || request.resource.data.partnerId is string) &&
+             (!('shared' in request.resource.data) || request.resource.data.shared is map);
     }
     
     function isValidPlayerState() {

@@ -1,12 +1,18 @@
 export type Scene = 'outside' | 'inside';
 
+export interface Task {
+  id: string;
+  text: string;
+  completed: boolean;
+}
+
 export interface GameObject {
   id: string;
   x: number;
   y: number;
   width: number;
   height: number;
-  type: 'tree' | 'cabin' | 'bed' | 'rug' | 'table' | 'chair' | 'mailbox' | 'fence' | 'chest' | 'bookshelf' | 'fireplace';
+  type: 'tree' | 'cabin' | 'bed' | 'rug' | 'table' | 'chair' | 'mailbox' | 'fence' | 'chest' | 'bookshelf' | 'fireplace' | 'mirror' | 'cat' | 'luxury_rug' | 'high_end_lamp';
   solid: boolean;
   interactable?: boolean;
   onInteract?: () => void;
@@ -50,8 +56,16 @@ export interface GameState {
   chest: {
     wood: number;
   };
+  shared: {
+    wood: number;
+    cozyCoins: number;
+    tasks: Task[];
+    purchasedItems: string[];
+  };
   ui: {
     chestOpen: boolean;
+    tasksOpen: boolean;
+    coachOpen: boolean;
   };
 }
 
@@ -124,7 +138,17 @@ export const createInitialState = (): GameState => {
     interactionTarget: null,
     inventory: { wood: 0 },
     chest: { wood: 0 },
-    ui: { chestOpen: false },
+    shared: {
+      wood: 0,
+      cozyCoins: 0,
+      tasks: [
+        { id: 't1', text: 'Send a sweet message', completed: false },
+        { id: 't2', text: 'Plan a weekend walk', completed: false },
+        { id: 't3', text: 'Complete a joint check-in', completed: false }
+      ],
+      purchasedItems: []
+    },
+    ui: { chestOpen: false, tasksOpen: false, coachOpen: false },
     objects: {
       outside: [
         {
@@ -209,6 +233,16 @@ export const createInitialState = (): GameState => {
           solid: true,
           interactable: true,
         },
+        {
+          id: 'mirror',
+          x: -50,
+          y: -100,
+          width: 30,
+          height: 40,
+          type: 'mirror',
+          solid: true,
+          interactable: true,
+        }
       ],
     },
   };
