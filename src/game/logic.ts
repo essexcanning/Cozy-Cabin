@@ -38,14 +38,17 @@ export const updateGame = (state: GameState, deltaTime: number) => {
 
   // Animation frame
   if (state.player.isMoving) {
-    state.player.animFrame += deltaTime * 0.01;
+    state.player.animFrame += deltaTime * 0.005; // Slower, smoother animation cycle
   } else {
-    state.player.animFrame = 0;
+    // Smoothly return to standing position
+    state.player.animFrame = state.player.animFrame * 0.8;
   }
 
-  // Proposed new position
-  let newX = state.player.x + state.player.dx;
-  let newY = state.player.y + state.player.dy;
+  // Proposed new position (delta-time independent movement)
+  // Base speed is 3. We multiply by (deltaTime / 16.666) to normalize to 60fps.
+  const timeScale = deltaTime / 16.666;
+  let newX = state.player.x + state.player.dx * timeScale;
+  let newY = state.player.y + state.player.dy * timeScale;
 
   // Collision detection
   const currentObjects = state.objects[state.scene];

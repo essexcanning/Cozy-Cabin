@@ -321,21 +321,62 @@ const drawPlayer = (ctx: CanvasRenderingContext2D, state: GameState) => {
   ctx.save();
   ctx.translate(x, y);
 
-  // Bobbing animation
-  const bob = isMoving ? Math.sin(animFrame * Math.PI * 2) * 2 : 0;
-  ctx.translate(0, bob);
+  // Bobbing animation (absolute sine for a "bounce" step)
+  const bob = isMoving ? Math.abs(Math.sin(animFrame * Math.PI * 2)) * 3 : 0;
 
-  // Shadow
+  // Shadow (scales slightly with bob)
   ctx.fillStyle = 'rgba(0,0,0,0.2)';
   ctx.beginPath();
-  ctx.ellipse(0, 12, 10, 4, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 12 + bob, 10 - bob/4, 4 - bob/8, 0, 0, Math.PI * 2);
   ctx.fill();
+
+  ctx.translate(0, -bob);
+
+  // Body Tilt
+  const tilt = isMoving ? Math.sin(animFrame * Math.PI * 2) * 0.08 : 0;
+  ctx.rotate(tilt);
+
+  // Arms (drawn before body if facing up, after if facing down)
+  const armSwing = isMoving ? Math.sin(animFrame * Math.PI * 2) * 6 : 0;
+  
+  const drawArms = () => {
+    ctx.fillStyle = '#ffb74d'; // Orange shirt sleeves
+    if (facing === 'left' || facing === 'right') {
+      // One arm visible
+      ctx.beginPath();
+      ctx.roundRect(-2 + armSwing, -2, 4, 10, 2);
+      ctx.fill();
+      
+      // Hand
+      ctx.fillStyle = '#ffe0b2';
+      ctx.beginPath();
+      ctx.arc(armSwing, 8, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // Two arms
+      ctx.beginPath();
+      ctx.roundRect(-12, -2, 4, 10 + armSwing, 2); // Left arm
+      ctx.roundRect(8, -2, 4, 10 - armSwing, 2);  // Right arm
+      ctx.fill();
+      
+      // Hands
+      ctx.fillStyle = '#ffe0b2';
+      ctx.beginPath();
+      ctx.arc(-10, 8 + armSwing, 2.5, 0, Math.PI * 2);
+      ctx.arc(10, 8 - armSwing, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  };
+
+  if (facing === 'up') drawArms();
 
   // Body
   ctx.fillStyle = '#ffb74d'; // Orange shirt
   ctx.beginPath();
   ctx.roundRect(-8, -5, 16, 14, 4);
   ctx.fill();
+
+  if (facing !== 'up') drawArms();
 
   // Head
   ctx.fillStyle = '#ffe0b2'; // Skin tone
@@ -362,7 +403,7 @@ const drawPlayer = (ctx: CanvasRenderingContext2D, state: GameState) => {
 
   // Legs
   ctx.fillStyle = '#1565c0'; // Blue pants
-  const legSwing = isMoving ? Math.sin(animFrame * Math.PI * 2) * 4 : 0;
+  const legSwing = isMoving ? Math.sin(animFrame * Math.PI * 2) * 5 : 0;
   
   if (facing === 'left' || facing === 'right') {
     ctx.fillRect(-4 + legSwing, 9, 4, 6);
