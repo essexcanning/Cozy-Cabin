@@ -155,6 +155,111 @@ export const updateGame = (state: GameState, deltaTime: number) => {
   if (state.player.facing === 'right') interactX += interactRange;
 
   for (const obj of currentObjects) {
+    // Cat movement logic
+    if (obj.type === 'cat') {
+      if (obj.moveTimer === undefined) obj.moveTimer = 0;
+      if (obj.animFrame === undefined) obj.animFrame = 0;
+      if (obj.dx === undefined) obj.dx = 0;
+      if (obj.dy === undefined) obj.dy = 0;
+      if (obj.facing === undefined) obj.facing = 'down';
+      if (obj.isMoving === undefined) obj.isMoving = false;
+
+      obj.moveTimer -= deltaTime;
+      if (obj.moveTimer <= 0) {
+        const action = Math.random();
+        if (action < 0.4) {
+          obj.dx = 0;
+          obj.dy = 0;
+          obj.isMoving = false;
+          obj.moveTimer = 1000 + Math.random() * 3000;
+        } else {
+          const speed = 0.8;
+          const dir = Math.floor(Math.random() * 4);
+          if (dir === 0) { obj.dx = 0; obj.dy = -speed; obj.facing = 'up'; }
+          else if (dir === 1) { obj.dx = 0; obj.dy = speed; obj.facing = 'down'; }
+          else if (dir === 2) { obj.dx = -speed; obj.dy = 0; obj.facing = 'left'; }
+          else if (dir === 3) { obj.dx = speed; obj.dy = 0; obj.facing = 'right'; }
+          obj.isMoving = true;
+          obj.moveTimer = 500 + Math.random() * 2000;
+        }
+      }
+
+      if (obj.isMoving) {
+        obj.animFrame += deltaTime * 0.005;
+        
+        let newCatX = obj.x + obj.dx! * timeScale;
+        let newCatY = obj.y + obj.dy! * timeScale;
+        
+        const roomWidth = 280;
+        const roomHeight = 220;
+        if (newCatX < -roomWidth / 2 || newCatX > roomWidth / 2) {
+          obj.dx = -obj.dx!;
+          newCatX = obj.x;
+          obj.facing = obj.dx! > 0 ? 'right' : 'left';
+        }
+        if (newCatY < -roomHeight / 2 || newCatY > roomHeight / 2) {
+          obj.dy = -obj.dy!;
+          newCatY = obj.y;
+          obj.facing = obj.dy! > 0 ? 'down' : 'up';
+        }
+
+        let canMoveCatX = true;
+        let canMoveCatY = true;
+        
+        const catRect = {
+          left: newCatX - obj.width / 2,
+          right: newCatX + obj.width / 2,
+          top: newCatY - obj.height / 2,
+          bottom: newCatY + obj.height / 2,
+        };
+
+        for (const otherObj of currentObjects) {
+          if (!otherObj.solid || otherObj === obj) continue;
+          
+          const otherRect = {
+            left: otherObj.x - otherObj.width / 2,
+            right: otherObj.x + otherObj.width / 2,
+            top: otherObj.y - otherObj.height / 2,
+            bottom: otherObj.y + otherObj.height / 2,
+          };
+
+          const testRectX = { ...catRect, top: obj.y - obj.height / 2, bottom: obj.y + obj.height / 2 };
+          if (
+            testRectX.right > otherRect.left &&
+            testRectX.left < otherRect.right &&
+            testRectX.bottom > otherRect.top &&
+            testRectX.top < otherRect.bottom
+          ) {
+            canMoveCatX = false;
+          }
+
+          const testRectY = { ...catRect, left: obj.x - obj.width / 2, right: obj.x + obj.width / 2 };
+          if (
+            testRectY.right > otherRect.left &&
+            testRectY.left < otherRect.right &&
+            testRectY.bottom > otherRect.top &&
+            testRectY.top < otherRect.bottom
+          ) {
+            canMoveCatY = false;
+          }
+        }
+
+        if (canMoveCatX) obj.x = newCatX;
+        else {
+          obj.dx = -obj.dx!;
+          obj.facing = obj.dx! > 0 ? 'right' : 'left';
+        }
+        
+        if (canMoveCatY) obj.y = newCatY;
+        else {
+          obj.dy = -obj.dy!;
+          obj.facing = obj.dy! > 0 ? 'down' : 'up';
+        }
+      } else {
+        obj.animFrame = 0;
+      }
+    }
+
     if (!obj.interactable) continue;
     
     const objRect = {

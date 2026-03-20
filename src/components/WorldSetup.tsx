@@ -38,7 +38,8 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
             { id: 't2', text: 'Plan a weekend walk', completed: false },
             { id: 't3', text: 'Complete a joint check-in', completed: false }
           ],
-          purchasedItems: []
+          purchasedItems: [],
+          dateNight: null
         }
       });
 

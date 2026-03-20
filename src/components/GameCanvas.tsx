@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createInitialState, GameState, Task } from '../game/types';
 import { updateGame } from '../game/logic';
 import { renderGame } from '../game/render';
+import { playSound, toggleBGM } from '../game/audio';
 import { auth, db } from '../firebase';
 import { doc, setDoc, getDoc, onSnapshot, collection, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { GoogleGenAI } from '@google/genai';
@@ -26,7 +27,8 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       { id: 't2', text: 'Plan a weekend walk', completed: false },
       { id: 't3', text: 'Complete a joint check-in', completed: false }
     ],
-    purchasedItems: [] as string[]
+    purchasedItems: [] as string[],
+    dateNight: null as { active: boolean, prompt: string } | null
   });
 
   const [inviteCode, setInviteCode] = useState<string | null>(null);
@@ -52,20 +54,36 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
         if (data.shared) {
           setSharedState(data.shared);
           gameState.shared = data.shared;
+          gameState.ui.dateNightOpen = !!data.shared.dateNight?.active;
           
           // Update purchased items in the scene
+          const existingCat = gameState.objects.inside.find(obj => obj.type === 'cat');
+          
           const newInsideObjects = gameState.objects.inside.filter(obj => 
-            !['cat', 'luxury_rug', 'high_end_lamp'].includes(obj.type)
+            !['cat', 'luxury_rug', 'high_end_lamp', 'gramophone', 'potted_plant', 'wall_art'].includes(obj.type)
           );
           
           if (data.shared.purchasedItems?.includes('cat')) {
-            newInsideObjects.push({ id: 'cat', x: 40, y: -40, width: 20, height: 20, type: 'cat', solid: true, interactable: true });
+            if (existingCat) {
+              newInsideObjects.push(existingCat);
+            } else {
+              newInsideObjects.push({ id: 'cat', x: 40, y: -40, width: 20, height: 20, type: 'cat', solid: true, interactable: true });
+            }
           }
           if (data.shared.purchasedItems?.includes('luxury_rug')) {
             newInsideObjects.push({ id: 'luxury_rug', x: 0, y: 0, width: 120, height: 80, type: 'luxury_rug', solid: false });
           }
           if (data.shared.purchasedItems?.includes('high_end_lamp')) {
             newInsideObjects.push({ id: 'high_end_lamp', x: -80, y: -20, width: 20, height: 40, type: 'high_end_lamp', solid: true });
+          }
+          if (data.shared.purchasedItems?.includes('gramophone')) {
+            newInsideObjects.push({ id: 'gramophone', x: 80, y: -20, width: 20, height: 30, type: 'gramophone', solid: true });
+          }
+          if (data.shared.purchasedItems?.includes('potted_plant')) {
+            newInsideObjects.push({ id: 'potted_plant', x: -80, y: 80, width: 20, height: 40, type: 'potted_plant', solid: true });
+          }
+          if (data.shared.purchasedItems?.includes('wall_art')) {
+            newInsideObjects.push({ id: 'wall_art', x: 0, y: -100, width: 40, height: 30, type: 'wall_art', solid: false });
           }
           
           gameState.objects.inside = newInsideObjects;
@@ -80,7 +98,8 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
                 { id: 't2', text: 'Plan a weekend walk', completed: false },
                 { id: 't3', text: 'Complete a joint check-in', completed: false }
               ],
-              purchasedItems: []
+              purchasedItems: [],
+              dateNight: null
             }
           });
         }
@@ -108,6 +127,7 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
             facing: data.facing || 'down',
             isMoving: data.isMoving || false,
             animFrame: data.animFrame || 0,
+            color: data.color || '#1565c0'
           };
         }
         if (change.type === 'removed') {
@@ -127,7 +147,7 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (gameState.ui.chestOpen || gameState.ui.tasksOpen || gameState.ui.coachOpen) {
+      if (gameState.ui.chestOpen || gameState.ui.tasksOpen || gameState.ui.coachOpen || gameState.ui.dateNightOpen) {
         if (e.key === 'Escape') {
           setIsChestOpen(false);
           setIsTasksOpen(false);
@@ -183,7 +203,27 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [gameState]);
+  }, [gameState, sharedState]);
+
+  const startDateNight = async () => {
+    setIsCoachLoading(true);
+    try {
+      const prompt = `You are a romantic relationship coach. Suggest a cozy, deep conversation prompt or a sweet, simple activity for a couple to do right now while playing a game together. Keep it under 2 sentences.`;
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+      });
+      await updateDoc(doc(db, 'worlds', worldId), {
+        'shared.dateNight': { active: true, prompt: response.text || "Share your favorite memory together." }
+      });
+      setIsCoachOpen(false);
+      gameState.ui.coachOpen = false;
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsCoachLoading(false);
+    }
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -218,6 +258,7 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
             facing: gameState.player.facing,
             isMoving: gameState.player.isMoving,
             animFrame: gameState.player.animFrame,
+            color: gameState.player.color || '#ffb74d',
             lastUpdated: serverTimestamp()
           };
           // console.log("Syncing data:", syncData);
@@ -261,7 +302,16 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
     }
   };
 
+  const [isBgmPlaying, setIsBgmPlaying] = useState(false);
+
+  const handleToggleBgm = () => {
+    const newBgmState = !isBgmPlaying;
+    setIsBgmPlaying(newBgmState);
+    toggleBGM(newBgmState);
+  };
+
   const completeTask = async (taskId: string) => {
+    playSound('task');
     const newTasks = sharedState.tasks.map(t => 
       t.id === taskId ? { ...t, completed: true } : t
     );
@@ -286,6 +336,7 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
 
   const buyItem = async (itemId: string, cost: number) => {
     if (sharedState.cozyCoins >= cost && !sharedState.purchasedItems.includes(itemId)) {
+      playSound('buy');
       await updateDoc(doc(db, 'worlds', worldId), {
         'shared.cozyCoins': sharedState.cozyCoins - cost,
         'shared.purchasedItems': [...sharedState.purchasedItems, itemId]
@@ -333,6 +384,29 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
 
       {/* Controls Help */}
       <div className="absolute top-4 right-4 bg-black/50 text-white p-4 rounded-xl backdrop-blur-sm flex flex-col gap-4">
+        <div className="flex gap-2 justify-between">
+          <button 
+            onClick={handleToggleBgm}
+            className="bg-white/10 hover:bg-white/20 p-2 rounded-lg transition-colors flex-1 text-center"
+            title="Toggle Music"
+          >
+            {isBgmPlaying ? '🔊' : '🔇'}
+          </button>
+          <button 
+            onClick={() => {
+              const newColor = prompt("Enter a color for your character (e.g., #ff0000, blue, #4caf50):", gameState.player.color || '#ffb74d');
+              if (newColor) {
+                gameState.player.color = newColor;
+                setDoc(doc(db, 'worlds', worldId, 'players', auth.currentUser!.uid), { color: newColor }, { merge: true });
+              }
+            }}
+            className="bg-white/10 hover:bg-white/20 p-2 rounded-lg transition-colors flex-1 text-center"
+            title="Customize Character"
+          >
+            👕
+          </button>
+        </div>
+        
         <div>
           <h2 className="font-bold mb-2">Controls</h2>
           <ul className="text-sm space-y-1 text-gray-200">
@@ -404,17 +478,71 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
             <h2 className="text-2xl font-bold text-blue-800 mb-6 flex items-center gap-2">
               <span>✨</span> Magic Mirror Coach
             </h2>
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-blue-100 min-h-[100px] flex items-center justify-center text-center text-blue-900 italic">
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-blue-100 min-h-[100px] flex items-center justify-center text-center text-blue-900 italic mb-4">
               {isCoachLoading ? "Gazing into the relationship crystal ball..." : coachMessage}
             </div>
+            
+            <div className="space-y-3">
+              <button 
+                className="w-full bg-indigo-500 text-white p-3 rounded-xl hover:bg-indigo-600 font-bold transition-colors shadow-md flex items-center justify-center gap-2"
+                onClick={startDateNight}
+                disabled={isCoachLoading}
+              >
+                <span>🌙</span> Plan a Date Night
+              </button>
+              
+              <button 
+                className="w-full bg-blue-200 text-blue-800 p-3 rounded-xl hover:bg-blue-300 font-bold transition-colors"
+                onClick={() => {
+                  setIsCoachOpen(false);
+                  gameState.ui.coachOpen = false;
+                }}
+              >
+                Close (Esc)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Date Night Overlay */}
+      {sharedState.dateNight?.active && (
+        <div className="absolute inset-0 bg-indigo-950/95 flex flex-col items-center justify-center z-50 backdrop-blur-md">
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            {/* Simple CSS stars could go here, for now just a gradient */}
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900/50 via-indigo-950/80 to-black"></div>
+          </div>
+          
+          <div className="relative max-w-2xl text-center p-8 z-10">
+            <h2 className="text-5xl font-serif italic text-indigo-200 mb-8 tracking-wider">✨ Date Night ✨</h2>
+            <div className="bg-indigo-900/50 p-8 rounded-3xl border border-indigo-500/30 shadow-2xl mb-12 backdrop-blur-sm">
+              <p className="text-2xl text-indigo-50 leading-relaxed font-medium">
+                {sharedState.dateNight.prompt}
+              </p>
+            </div>
+            
             <button 
-              className="mt-6 w-full bg-blue-200 text-blue-800 p-3 rounded-xl hover:bg-blue-300 font-bold transition-colors"
-              onClick={() => {
-                setIsCoachOpen(false);
-                gameState.ui.coachOpen = false;
+              onClick={async () => {
+                // Add particles
+                const newParticles = Array.from({length: 20}).map((_, i) => ({
+                  x: window.innerWidth / 2 + (Math.random() * 200 - 100),
+                  y: window.innerHeight / 2 + (Math.random() * 200 - 100),
+                  id: Date.now() + i
+                }));
+                setParticles(prev => [...prev, ...newParticles]);
+                
+                setTimeout(() => {
+                  setParticles(prev => prev.filter(p => !newParticles.find(np => np.id === p.id)));
+                }, 1000);
+
+                await updateDoc(doc(db, 'worlds', worldId), {
+                  'shared.dateNight': null,
+                  'shared.cozyCoins': sharedState.cozyCoins + 50
+                });
               }}
+              className="bg-indigo-500 hover:bg-indigo-400 text-white px-10 py-4 rounded-full text-xl font-bold transition-all shadow-[0_0_30px_rgba(99,102,241,0.5)] hover:shadow-[0_0_50px_rgba(99,102,241,0.8)] hover:scale-105"
             >
-              Close (Esc)
+              We did it! (+50 🪙)
             </button>
           </div>
         </div>
@@ -431,11 +559,14 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
               </div>
             </div>
             
-            <div className="space-y-3">
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
               {[
                 { id: 'cat', name: 'Pet Cat', cost: 50, icon: '🐈' },
                 { id: 'luxury_rug', name: 'Luxury Rug', cost: 30, icon: '🧶' },
-                { id: 'high_end_lamp', name: 'Cozy Lamp', cost: 20, icon: '💡' }
+                { id: 'high_end_lamp', name: 'Cozy Lamp', cost: 20, icon: '💡' },
+                { id: 'gramophone', name: 'Gramophone', cost: 40, icon: '📻' },
+                { id: 'potted_plant', name: 'Potted Plant', cost: 15, icon: '🪴' },
+                { id: 'wall_art', name: 'Wall Art', cost: 25, icon: '🖼️' }
               ].map((item) => {
                 const isPurchased = sharedState.purchasedItems.includes(item.id);
                 const canAfford = sharedState.cozyCoins >= item.cost;

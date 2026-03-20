@@ -12,10 +12,16 @@ export interface GameObject {
   y: number;
   width: number;
   height: number;
-  type: 'tree' | 'cabin' | 'bed' | 'rug' | 'table' | 'chair' | 'mailbox' | 'fence' | 'chest' | 'bookshelf' | 'fireplace' | 'mirror' | 'cat' | 'luxury_rug' | 'high_end_lamp';
+  type: 'tree' | 'cabin' | 'bed' | 'rug' | 'table' | 'chair' | 'mailbox' | 'fence' | 'chest' | 'bookshelf' | 'fireplace' | 'mirror' | 'cat' | 'luxury_rug' | 'high_end_lamp' | 'gramophone' | 'potted_plant' | 'wall_art';
   solid: boolean;
   interactable?: boolean;
   onInteract?: () => void;
+  dx?: number;
+  dy?: number;
+  facing?: 'up' | 'down' | 'left' | 'right';
+  isMoving?: boolean;
+  animFrame?: number;
+  moveTimer?: number;
 }
 
 export interface GameState {
@@ -31,6 +37,7 @@ export interface GameState {
     facing: 'up' | 'down' | 'left' | 'right';
     isMoving: boolean;
     animFrame: number;
+    color?: string;
   };
   otherPlayers: {
     [uid: string]: {
@@ -40,6 +47,7 @@ export interface GameState {
       facing: 'up' | 'down' | 'left' | 'right';
       isMoving: boolean;
       animFrame: number;
+      color?: string;
     }
   };
   keys: { [key: string]: boolean };
@@ -61,11 +69,13 @@ export interface GameState {
     cozyCoins: number;
     tasks: Task[];
     purchasedItems: string[];
+    dateNight: { active: boolean; prompt: string } | null;
   };
   ui: {
     chestOpen: boolean;
     tasksOpen: boolean;
     coachOpen: boolean;
+    dateNightOpen: boolean;
   };
 }
 
@@ -146,9 +156,10 @@ export const createInitialState = (): GameState => {
         { id: 't2', text: 'Plan a weekend walk', completed: false },
         { id: 't3', text: 'Complete a joint check-in', completed: false }
       ],
-      purchasedItems: []
+      purchasedItems: [],
+      dateNight: null
     },
-    ui: { chestOpen: false, tasksOpen: false, coachOpen: false },
+    ui: { chestOpen: false, tasksOpen: false, coachOpen: false, dateNightOpen: false },
     objects: {
       outside: [
         {

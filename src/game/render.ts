@@ -18,14 +18,14 @@ export const renderGame = (ctx: CanvasRenderingContext2D, state: GameState, widt
   }
 
   // Draw floor objects first (like rugs) so they appear under the player
-  const floorObjects = state.objects[state.scene].filter(obj => obj.type === 'rug');
+  const floorObjects = state.objects[state.scene].filter(obj => obj.type === 'rug' || obj.type === 'luxury_rug');
   for (const obj of floorObjects) {
     drawObject(ctx, obj);
   }
 
   // Sort remaining objects by Y position for depth sorting
   const renderables: (GameObject | { type: 'player', y: number })[] = [
-    ...state.objects[state.scene].filter(obj => obj.type !== 'rug'),
+    ...state.objects[state.scene].filter(obj => obj.type !== 'rug' && obj.type !== 'luxury_rug'),
     { type: 'player', y: state.player.y }
   ];
 
@@ -62,7 +62,7 @@ export const renderGame = (ctx: CanvasRenderingContext2D, state: GameState, widt
       ctx.translate(0, bobOffset);
 
       // Body
-      ctx.fillStyle = '#1565c0'; // Blue shirt for partner
+      ctx.fillStyle = otherPlayer.color || '#1565c0'; // Blue shirt for partner by default
       ctx.beginPath();
       ctx.roundRect(-10, -10, 20, 20, 4);
       ctx.fill();
@@ -340,7 +340,7 @@ const drawPlayer = (ctx: CanvasRenderingContext2D, state: GameState) => {
   const armSwing = isMoving ? Math.sin(animFrame * Math.PI * 2) * 6 : 0;
   
   const drawArms = () => {
-    ctx.fillStyle = '#ffb74d'; // Orange shirt sleeves
+    ctx.fillStyle = state.player.color || '#ffb74d'; // Orange shirt sleeves
     if (facing === 'left' || facing === 'right') {
       // One arm visible
       ctx.beginPath();
@@ -371,7 +371,7 @@ const drawPlayer = (ctx: CanvasRenderingContext2D, state: GameState) => {
   if (facing === 'up') drawArms();
 
   // Body
-  ctx.fillStyle = '#ffb74d'; // Orange shirt
+  ctx.fillStyle = state.player.color || '#ffb74d'; // Orange shirt
   ctx.beginPath();
   ctx.roundRect(-8, -5, 16, 14, 4);
   ctx.fill();
@@ -766,23 +766,92 @@ const drawObject = (ctx: CanvasRenderingContext2D, obj: GameObject) => {
       ctx.fillRect(-obj.width/2 - 4, -3, obj.width + 8, 6);
     }
   } else if (obj.type === 'cat') {
-    // Sleeping cat
+    const isMoving = obj.isMoving || false;
+    const facing = obj.facing || 'down';
+    const animFrame = obj.animFrame || 0;
+    
     ctx.fillStyle = '#ff9800'; // Orange tabby
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 10, 8, 0, 0, Math.PI*2);
-    ctx.fill();
-    // Ears
-    ctx.beginPath();
-    ctx.moveTo(-6, -6); ctx.lineTo(-8, -12); ctx.lineTo(-2, -8);
-    ctx.moveTo(6, -6); ctx.lineTo(8, -12); ctx.lineTo(2, -8);
-    ctx.fill();
-    // Tail
-    ctx.strokeStyle = '#f57c00';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(8, 2);
-    ctx.quadraticCurveTo(15, 5, 12, 10);
-    ctx.stroke();
+    
+    if (!isMoving) {
+      // Sleeping cat
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 10, 8, 0, 0, Math.PI*2);
+      ctx.fill();
+      // Ears
+      ctx.beginPath();
+      ctx.moveTo(-6, -6); ctx.lineTo(-8, -12); ctx.lineTo(-2, -8);
+      ctx.moveTo(6, -6); ctx.lineTo(8, -12); ctx.lineTo(2, -8);
+      ctx.fill();
+      // Tail
+      ctx.strokeStyle = '#f57c00';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(8, 2);
+      ctx.quadraticCurveTo(15, 5, 12, 10);
+      ctx.stroke();
+    } else {
+      // Walking cat
+      const bob = Math.sin(animFrame * Math.PI * 2) * 2;
+      
+      // Body
+      ctx.beginPath();
+      if (facing === 'left' || facing === 'right') {
+        ctx.ellipse(0, bob, 12, 7, 0, 0, Math.PI*2);
+      } else {
+        ctx.ellipse(0, bob, 8, 10, 0, 0, Math.PI*2);
+      }
+      ctx.fill();
+      
+      // Head
+      ctx.beginPath();
+      if (facing === 'up') {
+        ctx.arc(0, -8 + bob, 6, 0, Math.PI*2);
+      } else if (facing === 'down') {
+        ctx.arc(0, 8 + bob, 6, 0, Math.PI*2);
+      } else if (facing === 'left') {
+        ctx.arc(-8, -4 + bob, 6, 0, Math.PI*2);
+      } else {
+        ctx.arc(8, -4 + bob, 6, 0, Math.PI*2);
+      }
+      ctx.fill();
+      
+      // Ears
+      ctx.beginPath();
+      if (facing === 'up') {
+        ctx.moveTo(-4, -12 + bob); ctx.lineTo(-6, -18 + bob); ctx.lineTo(-1, -14 + bob);
+        ctx.moveTo(4, -12 + bob); ctx.lineTo(6, -18 + bob); ctx.lineTo(1, -14 + bob);
+      } else if (facing === 'down') {
+        ctx.moveTo(-4, 4 + bob); ctx.lineTo(-6, -2 + bob); ctx.lineTo(-1, 2 + bob);
+        ctx.moveTo(4, 4 + bob); ctx.lineTo(6, -2 + bob); ctx.lineTo(1, 2 + bob);
+      } else if (facing === 'left') {
+        ctx.moveTo(-10, -8 + bob); ctx.lineTo(-12, -14 + bob); ctx.lineTo(-6, -10 + bob);
+        ctx.moveTo(-4, -8 + bob); ctx.lineTo(-2, -14 + bob); ctx.lineTo(0, -10 + bob);
+      } else {
+        ctx.moveTo(10, -8 + bob); ctx.lineTo(12, -14 + bob); ctx.lineTo(6, -10 + bob);
+        ctx.moveTo(4, -8 + bob); ctx.lineTo(2, -14 + bob); ctx.lineTo(0, -10 + bob);
+      }
+      ctx.fill();
+      
+      // Tail
+      ctx.strokeStyle = '#f57c00';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      const tailWag = Math.sin(animFrame * Math.PI * 4) * 3;
+      if (facing === 'up') {
+        ctx.moveTo(0, 8 + bob);
+        ctx.quadraticCurveTo(tailWag, 15 + bob, tailWag * 2, 18 + bob);
+      } else if (facing === 'down') {
+        ctx.moveTo(0, -8 + bob);
+        ctx.quadraticCurveTo(tailWag, -15 + bob, tailWag * 2, -18 + bob);
+      } else if (facing === 'left') {
+        ctx.moveTo(10, bob);
+        ctx.quadraticCurveTo(15, -5 + bob + tailWag, 18, -10 + bob + tailWag);
+      } else {
+        ctx.moveTo(-10, bob);
+        ctx.quadraticCurveTo(-15, -5 + bob + tailWag, -18, -10 + bob + tailWag);
+      }
+      ctx.stroke();
+    }
   } else if (obj.type === 'luxury_rug') {
     // Fancy rug
     ctx.fillStyle = '#880e4f'; // Deep purple/red
@@ -816,6 +885,57 @@ const drawObject = (ctx: CanvasRenderingContext2D, obj: GameObject) => {
     ctx.beginPath();
     ctx.arc(0, -obj.height/2 + 10, glow, 0, Math.PI*2);
     ctx.fill();
+  } else if (obj.type === 'gramophone') {
+    // Base
+    ctx.fillStyle = '#5d4037';
+    ctx.fillRect(-10, obj.height/2 - 10, 20, 10);
+    // Record
+    ctx.fillStyle = '#212121';
+    ctx.beginPath(); ctx.ellipse(0, obj.height/2 - 12, 8, 3, 0, 0, Math.PI*2); ctx.fill();
+    // Horn
+    ctx.fillStyle = '#ffca28'; // Gold
+    ctx.beginPath();
+    ctx.moveTo(-2, obj.height/2 - 12);
+    ctx.quadraticCurveTo(-15, obj.height/2 - 25, -10, -obj.height/2);
+    ctx.lineTo(10, -obj.height/2);
+    ctx.quadraticCurveTo(5, obj.height/2 - 25, 2, obj.height/2 - 12);
+    ctx.fill();
+    // Music notes if playing (just random notes for effect)
+    const time = Date.now() / 300;
+    ctx.fillStyle = '#ffca28';
+    ctx.font = '12px Arial';
+    ctx.fillText('♪', Math.sin(time)*10, -obj.height/2 - 10 - (time%10));
+    ctx.fillText('♫', Math.cos(time)*15, -obj.height/2 - 5 - ((time+5)%10));
+  } else if (obj.type === 'potted_plant') {
+    // Pot
+    ctx.fillStyle = '#d84315';
+    ctx.beginPath();
+    ctx.moveTo(-8, obj.height/2);
+    ctx.lineTo(8, obj.height/2);
+    ctx.lineTo(10, obj.height/2 - 15);
+    ctx.lineTo(-10, obj.height/2 - 15);
+    ctx.fill();
+    // Leaves
+    ctx.fillStyle = '#2e7d32';
+    ctx.beginPath(); ctx.arc(0, obj.height/2 - 25, 12, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(-8, obj.height/2 - 20, 10, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(8, obj.height/2 - 20, 10, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#4caf50';
+    ctx.beginPath(); ctx.arc(0, obj.height/2 - 30, 8, 0, Math.PI*2); ctx.fill();
+  } else if (obj.type === 'wall_art') {
+    // Frame
+    ctx.fillStyle = '#3e2723';
+    ctx.fillRect(-obj.width/2, -obj.height/2, obj.width, obj.height);
+    // Canvas
+    ctx.fillStyle = '#f5f5f5';
+    ctx.fillRect(-obj.width/2 + 2, -obj.height/2 + 2, obj.width - 4, obj.height - 4);
+    // Abstract art
+    ctx.fillStyle = '#e91e63';
+    ctx.beginPath(); ctx.arc(-5, -5, 8, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#2196f3';
+    ctx.fillRect(0, 0, 15, 15);
+    ctx.fillStyle = '#ffeb3b';
+    ctx.beginPath(); ctx.moveTo(-10, 10); ctx.lineTo(0, 20); ctx.lineTo(-20, 20); ctx.fill();
   }
 
   ctx.restore();
