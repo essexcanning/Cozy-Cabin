@@ -1,0 +1,55 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the application.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "worldId": { "type": "string" }
+      },
+      "required": ["uid", "email"]
+    },
+    "World": {
+      "title": "World",
+      "description": "A shared world instance.",
+      "type": "object",
+      "properties": {
+        "inviteCode": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "partnerId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["inviteCode", "ownerId", "createdAt"]
+    },
+    "PlayerState": {
+      "title": "PlayerState",
+      "description": "The real-time state of a player in a world.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "scene": { "type": "string" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "x", "y", "scene", "lastUpdated"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles."
+    },
+    "/worlds/{worldId}": {
+      "schema": { "$ref": "#/entities/World" },
+      "description": "Shared worlds."
+    },
+    "/worlds/{worldId}/players/{playerId}": {
+      "schema": { "$ref": "#/entities/PlayerState" },
+      "description": "Real-time player states in a world."
+    }
+  }
+}
