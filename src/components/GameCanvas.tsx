@@ -4,7 +4,7 @@ import { updateGame } from '../game/logic';
 import { renderGame } from '../game/render';
 import { playSound, toggleBGM } from '../game/audio';
 import { auth, db } from '../firebase';
-import { doc, setDoc, getDoc, onSnapshot, collection, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, onSnapshot, collection, serverTimestamp, updateDoc, increment } from 'firebase/firestore';
 import { GoogleGenAI } from '@google/genai';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -18,6 +18,7 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
   const [coachMessage, setCoachMessage] = useState<string>("Hello! I'm your Cozy Coach. Let me look at your tasks...");
   const [isCoachLoading, setIsCoachLoading] = useState(false);
   const [particles, setParticles] = useState<{x: number, y: number, id: number}[]>([]);
+  const [quotaExceeded, setQuotaExceeded] = useState(false);
   
   const [sharedState, setSharedState] = useState({
     wood: 0,
@@ -35,6 +36,7 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
   const requestRef = useRef<number>();
   const lastTimeRef = useRef<number>();
   const lastSyncRef = useRef<number>(0);
+  const lastSyncDataRef = useRef<string>('');
 
   useEffect(() => {
     if (!worldId) return;
@@ -45,6 +47,8 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       if (docSnap.exists()) {
         setInviteCode(docSnap.data().inviteCode);
       }
+    }).catch(err => {
+      if (err.message?.includes('Quota exceeded')) setQuotaExceeded(true);
     });
 
     // Real-time sync for shared state
@@ -101,8 +105,16 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
               purchasedItems: [],
               dateNight: null
             }
+          }).catch(err => {
+            if (err.message?.includes('Quota exceeded')) setQuotaExceeded(true);
           });
         }
+      }
+    }, (err) => {
+      if (err.message?.includes('Quota exceeded')) {
+        setQuotaExceeded(true);
+      } else {
+        console.error("Shared state sync error:", err);
       }
     });
 
@@ -120,14 +132,18 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
         if (change.doc.id === auth.currentUser?.uid) return; // Skip our own state
 
         if (change.type === 'added' || change.type === 'modified') {
+          const existing = gameState.otherPlayers[change.doc.id];
           gameState.otherPlayers[change.doc.id] = {
-            x: data.x,
-            y: data.y,
+            x: existing ? existing.x : data.x, // Start from current or initial
+            y: existing ? existing.y : data.y,
+            targetX: data.x,
+            targetY: data.y,
             scene: data.scene,
             facing: data.facing || 'down',
             isMoving: data.isMoving || false,
             animFrame: data.animFrame || 0,
-            color: data.color || '#1565c0'
+            color: data.color || '#1565c0',
+            outfit: data.outfit || 'default'
           };
         }
         if (change.type === 'removed') {
@@ -135,6 +151,9 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
         }
       });
     }, (error) => {
+      if (error.message?.includes('Quota exceeded')) {
+        setQuotaExceeded(true);
+      }
       console.error('Firestore Error: ', JSON.stringify({
         error: error.message,
         operationType: 'get',
@@ -164,10 +183,14 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       // Handle interactions
       if (e.key === 'e' || e.key === 'E') {
         if (gameState.interactionTarget) {
+          playSound('interact');
           const target = gameState.interactionTarget;
           if (target.type === 'tree') {
-            const newWood = sharedState.wood + 1;
-            setDoc(doc(db, 'worlds', worldId), { shared: { ...sharedState, wood: newWood } }, { merge: true });
+            updateDoc(doc(db, 'worlds', worldId), { 
+              'shared.wood': increment(1) 
+            }).catch(err => {
+              if (err.message?.includes('Quota exceeded')) setQuotaExceeded(true);
+            });
           } else if (target.type === 'chest') {
             setIsChestOpen(true);
             gameState.ui.chestOpen = true;
@@ -218,8 +241,9 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       });
       setIsCoachOpen(false);
       gameState.ui.coachOpen = false;
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      if (error.message?.includes('Quota exceeded')) setQuotaExceeded(true);
     } finally {
       setIsCoachLoading(false);
     }
@@ -247,22 +271,38 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
         // Fixed time step for logic
         updateGame(gameState, deltaTime);
         
-        // Sync to Firebase (throttle to ~10fps)
-        if (auth.currentUser && worldId && time - lastSyncRef.current > 100) {
-          lastSyncRef.current = time;
+        // Sync to Firebase (throttle to ~500ms and only if data changed significantly)
+        const syncInterval = gameState.player.isMoving ? 500 : 2000;
+        if (auth.currentUser && worldId && time - lastSyncRef.current > syncInterval) {
           const syncData = {
             uid: auth.currentUser.uid,
-            x: gameState.player.x,
-            y: gameState.player.y,
+            x: Math.round(gameState.player.x / 4) * 4, // Only sync if moved at least 4 pixels
+            y: Math.round(gameState.player.y / 4) * 4,
             scene: gameState.scene,
             facing: gameState.player.facing,
             isMoving: gameState.player.isMoving,
-            animFrame: gameState.player.animFrame,
+            animFrame: Math.floor(gameState.player.animFrame),
             color: gameState.player.color || '#ffb74d',
-            lastUpdated: serverTimestamp()
+            outfit: gameState.player.outfit || 'default'
           };
-          // console.log("Syncing data:", syncData);
-          setDoc(doc(db, 'worlds', worldId, 'players', auth.currentUser.uid), syncData, { merge: true }).catch(err => console.error("Sync error:", err));
+
+          const syncDataStr = JSON.stringify(syncData);
+          if (syncDataStr !== lastSyncDataRef.current) {
+            lastSyncRef.current = time;
+            lastSyncDataRef.current = syncDataStr;
+            
+            setDoc(doc(db, 'worlds', worldId, 'players', auth.currentUser.uid), {
+              ...syncData,
+              lastUpdated: serverTimestamp()
+            }, { merge: true }).catch(err => {
+              if (err.message?.includes('Quota exceeded')) {
+                setQuotaExceeded(true);
+                console.warn("Firestore Quota Exceeded. Sync paused.");
+              } else {
+                console.error("Sync error:", err);
+              }
+            });
+          }
         }
 
         // Render
@@ -331,6 +371,8 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
     await updateDoc(doc(db, 'worlds', worldId), {
       'shared.tasks': newTasks,
       'shared.cozyCoins': sharedState.cozyCoins + 10
+    }).catch(err => {
+      if (err.message?.includes('Quota exceeded')) setQuotaExceeded(true);
     });
   };
 
@@ -340,6 +382,8 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       await updateDoc(doc(db, 'worlds', worldId), {
         'shared.cozyCoins': sharedState.cozyCoins - cost,
         'shared.purchasedItems': [...sharedState.purchasedItems, itemId]
+      }).catch(err => {
+        if (err.message?.includes('Quota exceeded')) setQuotaExceeded(true);
       });
     }
   };
@@ -381,6 +425,17 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       >
         <span className="text-white text-2xl font-serif italic">Zzz...</span>
       </div>
+
+      {/* Quota Exceeded Notification */}
+      {quotaExceeded && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-red-500/90 text-white px-6 py-3 rounded-full shadow-lg z-50 flex items-center gap-3 animate-bounce">
+          <span className="text-xl">⚠️</span>
+          <div>
+            <p className="font-bold">Daily Quota Exceeded</p>
+            <p className="text-xs opacity-90 text-center">The game will sync again tomorrow. You can still play locally!</p>
+          </div>
+        </div>
+      )}
 
       {/* Controls Help */}
       <div className="absolute top-4 right-4 bg-black/50 text-white p-4 rounded-xl backdrop-blur-sm flex flex-col gap-4">
@@ -566,10 +621,18 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
                 { id: 'high_end_lamp', name: 'Cozy Lamp', cost: 20, icon: '💡' },
                 { id: 'gramophone', name: 'Gramophone', cost: 40, icon: '📻' },
                 { id: 'potted_plant', name: 'Potted Plant', cost: 15, icon: '🪴' },
-                { id: 'wall_art', name: 'Wall Art', cost: 25, icon: '🖼️' }
+                { id: 'wall_art', name: 'Wall Art', cost: 25, icon: '🖼️' },
+                { id: 'outfit_overalls', name: 'Overalls', cost: 15, icon: '👖' },
+                { id: 'outfit_dress', name: 'Sundress', cost: 15, icon: '👗' },
+                { id: 'outfit_suit', name: 'Sharp Suit', cost: 25, icon: '👔' },
+                { id: 'outfit_pajamas', name: 'Pajamas', cost: 10, icon: '🥱' },
+                { id: 'outfit_winter_coat', name: 'Winter Coat', cost: 20, icon: '🧥' }
               ].map((item) => {
                 const isPurchased = sharedState.purchasedItems.includes(item.id);
                 const canAfford = sharedState.cozyCoins >= item.cost;
+                const isOutfit = item.id.startsWith('outfit_');
+                const isEquipped = gameState.player.outfit === item.id;
+                
                 return (
                   <div key={item.id} className="bg-[#a1887f] p-3 rounded-xl text-white flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -577,7 +640,24 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
                       <div className="font-bold">{item.name}</div>
                     </div>
                     {isPurchased ? (
-                      <span className="text-emerald-300 font-bold text-sm">Owned</span>
+                      isOutfit ? (
+                        <button
+                          className={`px-3 py-1 rounded-lg font-bold text-sm transition-colors ${isEquipped ? 'bg-emerald-500 text-white' : 'bg-stone-200 text-stone-800 hover:bg-stone-300'}`}
+                          onClick={() => {
+                            if (!isEquipped) {
+                              gameState.player.outfit = item.id;
+                              setDoc(doc(db, 'worlds', worldId, 'players', auth.currentUser!.uid), { outfit: item.id }, { merge: true });
+                            } else {
+                              gameState.player.outfit = 'default';
+                              setDoc(doc(db, 'worlds', worldId, 'players', auth.currentUser!.uid), { outfit: 'default' }, { merge: true });
+                            }
+                          }}
+                        >
+                          {isEquipped ? 'Equipped' : 'Equip'}
+                        </button>
+                      ) : (
+                        <span className="text-emerald-300 font-bold text-sm">Owned</span>
+                      )
                     ) : (
                       <button 
                         className={`px-3 py-1 rounded-lg font-bold text-sm transition-colors ${canAfford ? 'bg-yellow-400 text-yellow-900 hover:bg-yellow-300' : 'bg-gray-400 text-gray-200 cursor-not-allowed'}`}

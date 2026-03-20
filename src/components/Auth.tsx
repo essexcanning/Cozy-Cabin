@@ -4,12 +4,19 @@ import { auth, googleProvider } from '../firebase';
 import { LogIn } from 'lucide-react';
 
 export const Auth: React.FC = () => {
+  const [error, setError] = React.useState<string | null>(null);
+
   const handleSignIn = async () => {
     try {
+      setError(null);
       await signInWithPopup(auth, googleProvider);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error signing in:', error);
-      alert('Failed to sign in. Please try again.');
+      if (error.message?.includes('Quota exceeded')) {
+        setError('Daily database limit reached. Please try again tomorrow.');
+      } else {
+        setError('Failed to sign in. Please try again.');
+      }
     }
   };
 
@@ -18,6 +25,12 @@ export const Auth: React.FC = () => {
       <div className="bg-stone-800 p-8 rounded-2xl shadow-xl max-w-md w-full text-center border border-stone-700">
         <h1 className="text-3xl font-bold text-stone-100 mb-2">Cozy Cabin</h1>
         <p className="text-stone-400 mb-8">Sign in to create or join a shared world.</p>
+        
+        {error && (
+          <div className="bg-red-900/50 border border-red-500/50 text-red-200 p-3 rounded-lg mb-6 text-sm">
+            {error}
+          </div>
+        )}
         
         <button
           onClick={handleSignIn}

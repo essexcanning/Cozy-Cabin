@@ -1,4 +1,4 @@
-export const playSound = (type: 'coin' | 'task' | 'buy') => {
+export const playSound = (type: 'coin' | 'task' | 'buy' | 'footstep' | 'interact') => {
   const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
   if (!AudioContext) return;
   
@@ -42,6 +42,28 @@ export const playSound = (type: 'coin' | 'task' | 'buy') => {
     gain.gain.setValueAtTime(0, now);
     gain.gain.linearRampToValueAtTime(0.1, now + 0.05);
     gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+    
+    osc.start(now);
+    osc.stop(now + 0.2);
+  } else if (type === 'footstep') {
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(150, now);
+    osc.frequency.exponentialRampToValueAtTime(40, now + 0.05);
+    
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.05, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+    
+    osc.start(now);
+    osc.stop(now + 0.05);
+  } else if (type === 'interact') {
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(523.25, now); // C5
+    osc.frequency.setValueAtTime(659.25, now + 0.1); // E5
+    
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.1, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
     
     osc.start(now);
     osc.stop(now + 0.2);
@@ -90,11 +112,38 @@ export const toggleBGM = (play: boolean) => {
       
       bgmOsc.connect(bgmGain);
       osc2.connect(bgmGain);
+      
+      // Add ambient wind/fire noise
+      const bufferSize = bgmCtx.sampleRate * 2; // 2 seconds
+      const buffer = bgmCtx.createBuffer(1, bufferSize, bgmCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+          data[i] = Math.random() * 2 - 1;
+      }
+      const noise = bgmCtx.createBufferSource();
+      noise.buffer = buffer;
+      noise.loop = true;
+      
+      const noiseFilter = bgmCtx.createBiquadFilter();
+      noiseFilter.type = 'lowpass';
+      noiseFilter.frequency.value = 400; // Muffled wind/fire
+      
+      const noiseGain = bgmCtx.createGain();
+      noiseGain.gain.value = 0.015; // Very quiet
+      
+      noise.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseGain.connect(bgmGain);
+      
       bgmGain.connect(bgmCtx.destination);
       
       bgmOsc.start();
       osc2.start();
       lfo.start();
+      noise.start();
+      
+      // Store noise to stop it later
+      (bgmOsc as any).noiseNode = noise;
     }
   } else {
     if (bgmGain) {
@@ -102,6 +151,9 @@ export const toggleBGM = (play: boolean) => {
       setTimeout(() => {
         if (bgmOsc) {
           bgmOsc.stop();
+          if ((bgmOsc as any).noiseNode) {
+            (bgmOsc as any).noiseNode.stop();
+          }
           bgmOsc.disconnect();
           bgmOsc = null;
         }

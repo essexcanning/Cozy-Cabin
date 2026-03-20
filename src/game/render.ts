@@ -24,10 +24,16 @@ export const renderGame = (ctx: CanvasRenderingContext2D, state: GameState, widt
   }
 
   // Sort remaining objects by Y position for depth sorting
-  const renderables: (GameObject | { type: 'player', y: number })[] = [
+  const renderables: (GameObject | { type: 'player', isLocal: boolean, uid?: string, y: number })[] = [
     ...state.objects[state.scene].filter(obj => obj.type !== 'rug' && obj.type !== 'luxury_rug'),
-    { type: 'player', y: state.player.y }
+    { type: 'player', isLocal: true, y: state.player.y }
   ];
+
+  for (const [uid, otherPlayer] of Object.entries(state.otherPlayers)) {
+    if (otherPlayer.scene === state.scene) {
+      renderables.push({ type: 'player', isLocal: false, uid, y: otherPlayer.y });
+    }
+  }
 
   renderables.sort((a, b) => {
     const yA = a.type === 'player' ? a.y : a.y + (a as GameObject).height / 2;
@@ -37,54 +43,14 @@ export const renderGame = (ctx: CanvasRenderingContext2D, state: GameState, widt
 
   for (const item of renderables) {
     if (item.type === 'player') {
-      drawPlayer(ctx, state);
+      const pItem = item as any;
+      if (pItem.isLocal) {
+        drawPlayer(ctx, state.player);
+      } else {
+        drawPlayer(ctx, state.otherPlayers[pItem.uid]);
+      }
     } else {
       drawObject(ctx, item as GameObject);
-    }
-  }
-
-  // Draw other players
-  for (const [uid, otherPlayer] of Object.entries(state.otherPlayers)) {
-    if (otherPlayer.scene === state.scene) {
-      // Re-use drawPlayer logic but pass the other player's state
-      // We can create a temporary state object or just draw it directly
-      ctx.save();
-      ctx.translate(otherPlayer.x, otherPlayer.y);
-
-      // Shadow
-      ctx.fillStyle = 'rgba(0,0,0,0.2)';
-      ctx.beginPath();
-      ctx.ellipse(0, 10, 12, 6, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Bobbing animation
-      const bobOffset = otherPlayer.isMoving ? Math.sin(otherPlayer.animFrame * Math.PI * 2) * 2 : 0;
-      ctx.translate(0, bobOffset);
-
-      // Body
-      ctx.fillStyle = otherPlayer.color || '#1565c0'; // Blue shirt for partner by default
-      ctx.beginPath();
-      ctx.roundRect(-10, -10, 20, 20, 4);
-      ctx.fill();
-
-      // Head
-      ctx.fillStyle = '#ffb74d';
-      ctx.beginPath();
-      ctx.arc(0, -18, 10, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Eyes based on facing direction
-      ctx.fillStyle = '#3e2723';
-      if (otherPlayer.facing === 'down') {
-        ctx.beginPath(); ctx.arc(-3, -20, 2, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(3, -20, 2, 0, Math.PI*2); ctx.fill();
-      } else if (otherPlayer.facing === 'left') {
-        ctx.beginPath(); ctx.arc(-5, -20, 2, 0, Math.PI*2); ctx.fill();
-      } else if (otherPlayer.facing === 'right') {
-        ctx.beginPath(); ctx.arc(5, -20, 2, 0, Math.PI*2); ctx.fill();
-      }
-
-      ctx.restore();
     }
   }
 
@@ -315,8 +281,8 @@ const drawInteriorRoom = (ctx: CanvasRenderingContext2D) => {
   ctx.fillText('WELCOME', 0, roomHeight / 2 - 5);
 };
 
-const drawPlayer = (ctx: CanvasRenderingContext2D, state: GameState) => {
-  const { x, y, facing, isMoving, animFrame } = state.player;
+const drawPlayer = (ctx: CanvasRenderingContext2D, player: { x: number, y: number, facing: string, isMoving: boolean, animFrame: number, color?: string, outfit?: string }) => {
+  const { x, y, facing, isMoving, animFrame, color, outfit } = player;
   
   ctx.save();
   ctx.translate(x, y);
@@ -339,8 +305,17 @@ const drawPlayer = (ctx: CanvasRenderingContext2D, state: GameState) => {
   // Arms (drawn before body if facing up, after if facing down)
   const armSwing = isMoving ? Math.sin(animFrame * Math.PI * 2) * 6 : 0;
   
+  const getShirtColor = () => {
+    if (outfit === 'outfit_suit') return '#212121';
+    if (outfit === 'outfit_pajamas') return '#90caf9';
+    if (outfit === 'outfit_winter_coat') return '#d84315';
+    if (outfit === 'outfit_dress') return '#f48fb1';
+    if (outfit === 'outfit_overalls') return '#e0e0e0'; // Under-shirt for overalls
+    return color || '#ffb74d';
+  };
+
   const drawArms = () => {
-    ctx.fillStyle = state.player.color || '#ffb74d'; // Orange shirt sleeves
+    ctx.fillStyle = getShirtColor();
     if (facing === 'left' || facing === 'right') {
       // One arm visible
       ctx.beginPath();
@@ -371,10 +346,54 @@ const drawPlayer = (ctx: CanvasRenderingContext2D, state: GameState) => {
   if (facing === 'up') drawArms();
 
   // Body
-  ctx.fillStyle = state.player.color || '#ffb74d'; // Orange shirt
+  ctx.fillStyle = getShirtColor();
   ctx.beginPath();
-  ctx.roundRect(-8, -5, 16, 14, 4);
-  ctx.fill();
+  
+  if (outfit === 'outfit_dress') {
+    // Dress shape
+    ctx.moveTo(-6, -5);
+    ctx.lineTo(6, -5);
+    ctx.lineTo(10, 12);
+    ctx.lineTo(-10, 12);
+    ctx.fill();
+  } else if (outfit === 'outfit_winter_coat') {
+    // Bulky coat
+    ctx.roundRect(-10, -5, 20, 16, 4);
+    ctx.fill();
+    // Fluff collar
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.roundRect(-8, -6, 16, 4, 2);
+    ctx.fill();
+  } else {
+    // Regular shirt
+    ctx.roundRect(-8, -5, 16, 14, 4);
+    ctx.fill();
+  }
+
+  // Overalls Details
+  if (outfit === 'outfit_overalls') {
+    ctx.fillStyle = '#1565c0'; // Denim blue
+    ctx.fillRect(-6, 2, 12, 7); // Main bib
+    if (facing === 'down' || facing === 'up') {
+      ctx.fillRect(-6, -4, 3, 6); // Left strap
+      ctx.fillRect(3, -4, 3, 6); // Right strap
+    } else {
+      ctx.fillRect(-2, -4, 4, 6); // Side strap
+    }
+  }
+
+  // Suit Details
+  if (outfit === 'outfit_suit' && facing === 'down') {
+    ctx.fillStyle = '#ffffff'; // White shirt
+    ctx.beginPath();
+    ctx.moveTo(-3, -5);
+    ctx.lineTo(3, -5);
+    ctx.lineTo(0, 2);
+    ctx.fill();
+    ctx.fillStyle = '#d32f2f'; // Red tie
+    ctx.fillRect(-1, -3, 2, 6);
+  }
 
   if (facing !== 'up') drawArms();
 
@@ -385,32 +404,80 @@ const drawPlayer = (ctx: CanvasRenderingContext2D, state: GameState) => {
   ctx.fill();
 
   // Hair/Hat
-  ctx.fillStyle = '#5d4037'; // Brown hair
-  ctx.beginPath();
-  ctx.arc(0, -14, 10, Math.PI, 0);
-  ctx.fill();
+  if (outfit === 'outfit_winter_coat') {
+    ctx.fillStyle = '#0277bd'; // Beanie
+    ctx.beginPath();
+    ctx.arc(0, -14, 10, Math.PI, 0);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff'; // Pom pom
+    ctx.beginPath();
+    ctx.arc(0, -24, 4, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (outfit === 'outfit_pajamas') {
+    ctx.fillStyle = '#90caf9'; // Nightcap
+    ctx.beginPath();
+    ctx.moveTo(-10, -14);
+    ctx.lineTo(10, -14);
+    ctx.lineTo(15, -22);
+    ctx.lineTo(-5, -25);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff'; // Pom pom
+    ctx.beginPath();
+    ctx.arc(15, -22, 3, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    ctx.fillStyle = '#5d4037'; // Brown hair
+    ctx.beginPath();
+    ctx.arc(0, -14, 10, Math.PI, 0);
+    ctx.fill();
+  }
 
   // Face
   ctx.fillStyle = '#3e2723';
   if (facing === 'down') {
-    ctx.beginPath(); ctx.arc(-3, -12, 1.5, 0, Math.PI * 2); ctx.fill(); // Left eye
-    ctx.beginPath(); ctx.arc(3, -12, 1.5, 0, Math.PI * 2); ctx.fill(); // Right eye
+    if (outfit === 'outfit_pajamas') {
+      // Sleepy eyes
+      ctx.beginPath(); ctx.moveTo(-5, -12); ctx.lineTo(-2, -10); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(5, -12); ctx.lineTo(2, -10); ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.arc(-3, -12, 1.5, 0, Math.PI * 2); ctx.fill(); // Left eye
+      ctx.beginPath(); ctx.arc(3, -12, 1.5, 0, Math.PI * 2); ctx.fill(); // Right eye
+    }
   } else if (facing === 'left') {
-    ctx.beginPath(); ctx.arc(-4, -12, 1.5, 0, Math.PI * 2); ctx.fill(); // Left eye
+    if (outfit === 'outfit_pajamas') {
+      ctx.beginPath(); ctx.moveTo(-6, -12); ctx.lineTo(-3, -10); ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.arc(-4, -12, 1.5, 0, Math.PI * 2); ctx.fill(); // Left eye
+    }
   } else if (facing === 'right') {
-    ctx.beginPath(); ctx.arc(4, -12, 1.5, 0, Math.PI * 2); ctx.fill(); // Right eye
+    if (outfit === 'outfit_pajamas') {
+      ctx.beginPath(); ctx.moveTo(6, -12); ctx.lineTo(3, -10); ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.arc(4, -12, 1.5, 0, Math.PI * 2); ctx.fill(); // Right eye
+    }
   }
 
   // Legs
-  ctx.fillStyle = '#1565c0'; // Blue pants
-  const legSwing = isMoving ? Math.sin(animFrame * Math.PI * 2) * 5 : 0;
-  
-  if (facing === 'left' || facing === 'right') {
-    ctx.fillRect(-4 + legSwing, 9, 4, 6);
-    ctx.fillRect(-4 - legSwing, 9, 4, 6);
-  } else {
-    ctx.fillRect(-6, 9, 4, 6 - legSwing);
-    ctx.fillRect(2, 9, 4, 6 + legSwing);
+  const getPantsColor = () => {
+    if (outfit === 'outfit_suit') return '#212121';
+    if (outfit === 'outfit_pajamas') return '#90caf9';
+    if (outfit === 'outfit_winter_coat') return '#424242';
+    if (outfit === 'outfit_overalls') return '#1565c0';
+    if (outfit === 'outfit_dress') return 'transparent'; // Legs hidden by dress
+    return '#1565c0'; // Blue pants
+  };
+
+  ctx.fillStyle = getPantsColor();
+  if (ctx.fillStyle !== 'rgba(0, 0, 0, 0)') { // If not transparent
+    const legSwing = isMoving ? Math.sin(animFrame * Math.PI * 2) * 5 : 0;
+    
+    if (facing === 'left' || facing === 'right') {
+      ctx.fillRect(-4 + legSwing, 9, 4, 6);
+      ctx.fillRect(-4 - legSwing, 9, 4, 6);
+    } else {
+      ctx.fillRect(-6, 9, 4, 6 - legSwing);
+      ctx.fillRect(2, 9, 4, 6 + legSwing);
+    }
   }
 
   ctx.restore();
@@ -769,10 +836,11 @@ const drawObject = (ctx: CanvasRenderingContext2D, obj: GameObject) => {
     const isMoving = obj.isMoving || false;
     const facing = obj.facing || 'down';
     const animFrame = obj.animFrame || 0;
+    const catState = obj.catState || 'sleeping';
     
     ctx.fillStyle = '#ff9800'; // Orange tabby
     
-    if (!isMoving) {
+    if (catState === 'sleeping') {
       // Sleeping cat
       ctx.beginPath();
       ctx.ellipse(0, 0, 10, 8, 0, 0, Math.PI*2);
@@ -789,16 +857,73 @@ const drawObject = (ctx: CanvasRenderingContext2D, obj: GameObject) => {
       ctx.moveTo(8, 2);
       ctx.quadraticCurveTo(15, 5, 12, 10);
       ctx.stroke();
-    } else {
-      // Walking cat
+    } else if (catState === 'playing') {
+      // Playing cat (batting at something)
       const bob = Math.sin(animFrame * Math.PI * 2) * 2;
+      const pawReach = Math.sin(animFrame * Math.PI * 4) * 6;
+      
+      // Body
+      ctx.beginPath();
+      ctx.ellipse(0, 2, 8, 10, 0, 0, Math.PI*2);
+      ctx.fill();
+      
+      // Head
+      ctx.beginPath();
+      ctx.arc(0, -6 + bob, 6, 0, Math.PI*2);
+      ctx.fill();
+      
+      // Ears
+      ctx.beginPath();
+      ctx.moveTo(-4, -10 + bob); ctx.lineTo(-6, -16 + bob); ctx.lineTo(-1, -12 + bob);
+      ctx.moveTo(4, -10 + bob); ctx.lineTo(6, -16 + bob); ctx.lineTo(1, -12 + bob);
+      ctx.fill();
+      
+      // Paws batting
+      ctx.fillStyle = '#ff9800';
+      ctx.beginPath();
+      ctx.arc(-4, -2 - Math.max(0, pawReach), 3, 0, Math.PI*2); // Left paw
+      ctx.arc(4, -2 - Math.max(0, -pawReach), 3, 0, Math.PI*2); // Right paw
+      ctx.fill();
+      
+      // Tail
+      ctx.strokeStyle = '#f57c00';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      const tailWag = Math.sin(animFrame * Math.PI * 6) * 4;
+      ctx.moveTo(0, 10);
+      ctx.quadraticCurveTo(tailWag, 18, tailWag * 2, 20);
+      ctx.stroke();
+      
+      // Playful dust/sparks
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.beginPath();
+      ctx.arc(0, -15 - Math.abs(pawReach), 2, 0, Math.PI*2);
+      ctx.fill();
+
+      // Yarn ball
+      ctx.fillStyle = '#e91e63'; // Pink yarn
+      ctx.beginPath();
+      ctx.arc(0, -18, 4, 0, Math.PI*2);
+      ctx.fill();
+      // Yarn string
+      ctx.strokeStyle = '#e91e63';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, -18);
+      ctx.quadraticCurveTo(-5, -15, -8, -10);
+      ctx.stroke();
+    } else {
+      // Walking or chasing cat
+      const bob = Math.sin(animFrame * Math.PI * 2) * (catState === 'chasing' ? 3 : 2);
       
       // Body
       ctx.beginPath();
       if (facing === 'left' || facing === 'right') {
-        ctx.ellipse(0, bob, 12, 7, 0, 0, Math.PI*2);
+        const stretch = catState === 'chasing' ? 2 : 0;
+        ctx.ellipse(0, bob, 12 + stretch, 7 - stretch/2, 0, 0, Math.PI*2);
       } else {
-        ctx.ellipse(0, bob, 8, 10, 0, 0, Math.PI*2);
+        const stretch = catState === 'chasing' ? 2 : 0;
+        ctx.ellipse(0, bob, 8 - stretch/2, 10 + stretch, 0, 0, Math.PI*2);
       }
       ctx.fill();
       
@@ -824,11 +949,13 @@ const drawObject = (ctx: CanvasRenderingContext2D, obj: GameObject) => {
         ctx.moveTo(-4, 4 + bob); ctx.lineTo(-6, -2 + bob); ctx.lineTo(-1, 2 + bob);
         ctx.moveTo(4, 4 + bob); ctx.lineTo(6, -2 + bob); ctx.lineTo(1, 2 + bob);
       } else if (facing === 'left') {
-        ctx.moveTo(-10, -8 + bob); ctx.lineTo(-12, -14 + bob); ctx.lineTo(-6, -10 + bob);
-        ctx.moveTo(-4, -8 + bob); ctx.lineTo(-2, -14 + bob); ctx.lineTo(0, -10 + bob);
+        const earBack = catState === 'chasing' ? 2 : 0;
+        ctx.moveTo(-10, -8 + bob); ctx.lineTo(-12 + earBack, -14 + bob); ctx.lineTo(-6, -10 + bob);
+        ctx.moveTo(-4, -8 + bob); ctx.lineTo(-2 + earBack, -14 + bob); ctx.lineTo(0, -10 + bob);
       } else {
-        ctx.moveTo(10, -8 + bob); ctx.lineTo(12, -14 + bob); ctx.lineTo(6, -10 + bob);
-        ctx.moveTo(4, -8 + bob); ctx.lineTo(2, -14 + bob); ctx.lineTo(0, -10 + bob);
+        const earBack = catState === 'chasing' ? -2 : 0;
+        ctx.moveTo(10, -8 + bob); ctx.lineTo(12 + earBack, -14 + bob); ctx.lineTo(6, -10 + bob);
+        ctx.moveTo(4, -8 + bob); ctx.lineTo(2 + earBack, -14 + bob); ctx.lineTo(0, -10 + bob);
       }
       ctx.fill();
       
@@ -836,7 +963,7 @@ const drawObject = (ctx: CanvasRenderingContext2D, obj: GameObject) => {
       ctx.strokeStyle = '#f57c00';
       ctx.lineWidth = 3;
       ctx.beginPath();
-      const tailWag = Math.sin(animFrame * Math.PI * 4) * 3;
+      const tailWag = Math.sin(animFrame * Math.PI * 4) * (catState === 'chasing' ? 5 : 3);
       if (facing === 'up') {
         ctx.moveTo(0, 8 + bob);
         ctx.quadraticCurveTo(tailWag, 15 + bob, tailWag * 2, 18 + bob);
@@ -851,6 +978,45 @@ const drawObject = (ctx: CanvasRenderingContext2D, obj: GameObject) => {
         ctx.quadraticCurveTo(-15, -5 + bob + tailWag, -18, -10 + bob + tailWag);
       }
       ctx.stroke();
+      
+      // If chasing, add some speed lines and a target (butterfly/sunbeam)
+      if (catState === 'chasing') {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        if (facing === 'left') {
+          ctx.moveTo(15, bob); ctx.lineTo(25, bob);
+          ctx.moveTo(12, bob - 4); ctx.lineTo(20, bob - 4);
+        } else if (facing === 'right') {
+          ctx.moveTo(-15, bob); ctx.lineTo(-25, bob);
+          ctx.moveTo(-12, bob - 4); ctx.lineTo(-20, bob - 4);
+        } else if (facing === 'up') {
+          ctx.moveTo(0, 15 + bob); ctx.lineTo(0, 25 + bob);
+          ctx.moveTo(-4, 12 + bob); ctx.lineTo(-4, 20 + bob);
+        } else if (facing === 'down') {
+          ctx.moveTo(0, -15 + bob); ctx.lineTo(0, -25 + bob);
+          ctx.moveTo(-4, -12 + bob); ctx.lineTo(-4, -20 + bob);
+        }
+        ctx.stroke();
+
+        // Draw a little yellow sunbeam/butterfly in front of the cat
+        const targetDist = 20;
+        const flutterX = Math.sin(animFrame * Math.PI * 8) * 3;
+        const flutterY = Math.cos(animFrame * Math.PI * 8) * 3;
+        
+        ctx.fillStyle = 'rgba(255, 235, 59, 0.8)';
+        ctx.beginPath();
+        if (facing === 'left') {
+          ctx.arc(-targetDist + flutterX, bob + flutterY, 2, 0, Math.PI * 2);
+        } else if (facing === 'right') {
+          ctx.arc(targetDist + flutterX, bob + flutterY, 2, 0, Math.PI * 2);
+        } else if (facing === 'up') {
+          ctx.arc(flutterX, -targetDist + bob + flutterY, 2, 0, Math.PI * 2);
+        } else if (facing === 'down') {
+          ctx.arc(flutterX, targetDist + bob + flutterY, 2, 0, Math.PI * 2);
+        }
+        ctx.fill();
+      }
     }
   } else if (obj.type === 'luxury_rug') {
     // Fancy rug

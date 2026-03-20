@@ -52,9 +52,13 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
       }, { merge: true });
 
       onWorldJoined(newWorldId);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError('Failed to create world.');
+      if (err.message?.includes('Quota exceeded')) {
+        setError('Daily database limit reached. Please try again tomorrow.');
+      } else {
+        setError('Failed to create world.');
+      }
     } finally {
       setLoading(false);
     }
@@ -104,9 +108,13 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
       }, { merge: true });
 
       onWorldJoined(worldId);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError('Failed to join world.');
+      if (err.message?.includes('Quota exceeded')) {
+        setError('Daily database limit reached. Please try again tomorrow.');
+      } else {
+        setError('Failed to join world.');
+      }
     } finally {
       setLoading(false);
     }

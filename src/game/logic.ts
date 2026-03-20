@@ -1,4 +1,5 @@
 import { GameState, GameObject, Scene } from './types';
+import { playSound } from './audio';
 
 export const updateGame = (state: GameState, deltaTime: number) => {
   if (state.ui.chestOpen) return;
@@ -39,6 +40,13 @@ export const updateGame = (state: GameState, deltaTime: number) => {
   // Animation frame
   if (state.player.isMoving) {
     state.player.animFrame += deltaTime * 0.005; // Slower, smoother animation cycle
+    
+    // Footstep logic
+    if (state.player.lastFootstep === undefined) state.player.lastFootstep = 0;
+    if (state.player.animFrame - state.player.lastFootstep > 0.5) {
+      playSound('footstep');
+      state.player.lastFootstep = Math.floor(state.player.animFrame * 2) / 2;
+    }
   } else {
     // Smoothly return to standing position
     state.player.animFrame = state.player.animFrame * 0.8;
@@ -47,6 +55,34 @@ export const updateGame = (state: GameState, deltaTime: number) => {
   // Proposed new position (delta-time independent movement)
   // Base speed is 3. We multiply by (deltaTime / 16.666) to normalize to 60fps.
   const timeScale = deltaTime / 16.666;
+
+  // Update other players' interpolation
+  for (const uid in state.otherPlayers) {
+    const other = state.otherPlayers[uid];
+    // Smoothly move towards target
+    const dx = other.targetX - other.x;
+    const dy = other.targetY - other.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    
+    if (dist > 1) {
+      // Move at a speed that matches the sync interval (500ms)
+      other.x += dx * 0.1 * timeScale;
+      other.y += dy * 0.1 * timeScale;
+      other.isMoving = true;
+      other.animFrame += deltaTime * 0.005;
+    } else {
+      other.x = other.targetX;
+      other.y = other.targetY;
+      // We'll use the synced isMoving state here, but if the player is standing still,
+      // we should smoothly return their animFrame to 0.
+      if (!other.isMoving) {
+        other.animFrame = other.animFrame * 0.8;
+      } else {
+        other.animFrame += deltaTime * 0.005;
+      }
+    }
+  }
+
   let newX = state.player.x + state.player.dx * timeScale;
   let newY = state.player.y + state.player.dy * timeScale;
 
@@ -163,29 +199,55 @@ export const updateGame = (state: GameState, deltaTime: number) => {
       if (obj.dy === undefined) obj.dy = 0;
       if (obj.facing === undefined) obj.facing = 'down';
       if (obj.isMoving === undefined) obj.isMoving = false;
+      if (obj.catState === undefined) obj.catState = 'sleeping';
 
       obj.moveTimer -= deltaTime;
       if (obj.moveTimer <= 0) {
         const action = Math.random();
         if (action < 0.4) {
+          // Sleep
           obj.dx = 0;
           obj.dy = 0;
           obj.isMoving = false;
-          obj.moveTimer = 1000 + Math.random() * 3000;
-        } else {
-          const speed = 0.8;
+          obj.catState = 'sleeping';
+          obj.moveTimer = 3000 + Math.random() * 5000;
+        } else if (action < 0.7) {
+          // Walk
+          const speed = 0.6;
           const dir = Math.floor(Math.random() * 4);
           if (dir === 0) { obj.dx = 0; obj.dy = -speed; obj.facing = 'up'; }
           else if (dir === 1) { obj.dx = 0; obj.dy = speed; obj.facing = 'down'; }
           else if (dir === 2) { obj.dx = -speed; obj.dy = 0; obj.facing = 'left'; }
           else if (dir === 3) { obj.dx = speed; obj.dy = 0; obj.facing = 'right'; }
           obj.isMoving = true;
-          obj.moveTimer = 500 + Math.random() * 2000;
+          obj.catState = 'walking';
+          obj.moveTimer = 1000 + Math.random() * 3000;
+        } else if (action < 0.85) {
+          // Play in place
+          obj.dx = 0;
+          obj.dy = 0;
+          obj.isMoving = false;
+          obj.catState = 'playing';
+          obj.moveTimer = 1500 + Math.random() * 2000;
+        } else {
+          // Chase (fast movement)
+          const speed = 1.5;
+          const dir = Math.floor(Math.random() * 4);
+          if (dir === 0) { obj.dx = 0; obj.dy = -speed; obj.facing = 'up'; }
+          else if (dir === 1) { obj.dx = 0; obj.dy = speed; obj.facing = 'down'; }
+          else if (dir === 2) { obj.dx = -speed; obj.dy = 0; obj.facing = 'left'; }
+          else if (dir === 3) { obj.dx = speed; obj.dy = 0; obj.facing = 'right'; }
+          obj.isMoving = true;
+          obj.catState = 'chasing';
+          obj.moveTimer = 500 + Math.random() * 1000;
         }
       }
 
-      if (obj.isMoving) {
-        obj.animFrame += deltaTime * 0.005;
+      // Animate based on state
+      if (obj.catState === 'playing') {
+        obj.animFrame += deltaTime * 0.008;
+      } else if (obj.isMoving) {
+        obj.animFrame += deltaTime * (obj.catState === 'chasing' ? 0.01 : 0.005);
         
         let newCatX = obj.x + obj.dx! * timeScale;
         let newCatY = obj.y + obj.dy! * timeScale;
@@ -231,6 +293,8 @@ export const updateGame = (state: GameState, deltaTime: number) => {
             testRectX.top < otherRect.bottom
           ) {
             canMoveCatX = false;
+            obj.dx = -obj.dx!;
+            obj.facing = obj.dx! > 0 ? 'right' : 'left';
           }
 
           const testRectY = { ...catRect, left: obj.x - obj.width / 2, right: obj.x + obj.width / 2 };
@@ -241,6 +305,8 @@ export const updateGame = (state: GameState, deltaTime: number) => {
             testRectY.top < otherRect.bottom
           ) {
             canMoveCatY = false;
+            obj.dy = -obj.dy!;
+            obj.facing = obj.dy! > 0 ? 'down' : 'up';
           }
         }
 

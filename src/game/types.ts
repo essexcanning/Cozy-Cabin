@@ -22,6 +22,7 @@ export interface GameObject {
   isMoving?: boolean;
   animFrame?: number;
   moveTimer?: number;
+  catState?: 'sleeping' | 'walking' | 'playing' | 'chasing';
 }
 
 export interface GameState {
@@ -38,16 +39,21 @@ export interface GameState {
     isMoving: boolean;
     animFrame: number;
     color?: string;
+    outfit?: string;
+    lastFootstep?: number;
   };
   otherPlayers: {
     [uid: string]: {
       x: number;
       y: number;
+      targetX: number;
+      targetY: number;
       scene: Scene;
       facing: 'up' | 'down' | 'left' | 'right';
       isMoving: boolean;
       animFrame: number;
       color?: string;
+      outfit?: string;
     }
   };
   keys: { [key: string]: boolean };
