@@ -12,7 +12,7 @@ export interface GameObject {
   y: number;
   width: number;
   height: number;
-  type: 'tree' | 'cabin' | 'bed' | 'rug' | 'table' | 'chair' | 'mailbox' | 'fence' | 'chest' | 'bookshelf' | 'fireplace' | 'mirror' | 'cat' | 'luxury_rug' | 'high_end_lamp' | 'gramophone' | 'potted_plant' | 'wall_art' | 'magic_easel' | 'painting';
+  type: 'tree' | 'cabin' | 'bed' | 'rug' | 'table' | 'chair' | 'mailbox' | 'fence' | 'chest' | 'bookshelf' | 'fireplace' | 'mirror' | 'cat' | 'luxury_rug' | 'high_end_lamp' | 'gramophone' | 'potted_plant' | 'wall_art' | 'magic_easel' | 'painting' | 'vault';
   solid: boolean;
   interactable?: boolean;
   onInteract?: () => void;
@@ -121,6 +121,7 @@ export interface GameState {
     tasksOpen: boolean;
     coachOpen: boolean;
     dateNightOpen: boolean;
+    vaultOpen: boolean;
   };
 }
 
@@ -228,7 +229,7 @@ export const createInitialState = (): GameState => {
       speechBubble: null,
       speechTimer: 0
     },
-    ui: { chestOpen: false, tasksOpen: false, coachOpen: false, dateNightOpen: false },
+    ui: { chestOpen: false, tasksOpen: false, coachOpen: false, dateNightOpen: false, vaultOpen: false },
     objects: {
       outside: [
         {
@@ -320,6 +321,16 @@ export const createInitialState = (): GameState => {
           width: 30,
           height: 40,
           type: 'mirror',
+          solid: true,
+          interactable: true,
+        },
+        {
+          id: 'vault',
+          x: 110,
+          y: 30,
+          width: 30,
+          height: 40,
+          type: 'vault',
           solid: true,
           interactable: true,
         }

@@ -9,6 +9,10 @@
   .animate-float-up {
     animation: float-up 1s ease-out forwards;
   }
+  .animate-marquee {
+    display: inline-block;
+    animation: marquee 15s linear infinite;
+  }
 }
 
 @keyframes float-up {
@@ -20,4 +24,9 @@
     transform: translateY(-100px) scale(1.5);
     opacity: 0;
   }
+}
+
+@keyframes marquee {
+  0% { transform: translateX(100vw); }
+  100% { transform: translateX(-100%); }
 }

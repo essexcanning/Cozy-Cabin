@@ -2,7 +2,7 @@ import { GameState, GameObject, Scene } from './types';
 import { playSound } from './audio';
 
 export const updateGame = (state: GameState, deltaTime: number) => {
-  if (state.ui.chestOpen) return;
+  if (state.ui.chestOpen || state.ui.vaultOpen) return;
 
   // Handle input
   state.player.dx = 0;
@@ -364,6 +364,8 @@ export const updateGame = (state: GameState, deltaTime: number) => {
         state.interactionText = "Press E to gather wood";
       } else if (obj.type === 'chest') {
         state.interactionText = "Press E to open chest";
+      } else if (obj.type === 'vault') {
+        state.interactionText = "Press E to open Vault";
       } else if (obj.type === 'bookshelf') {
         state.interactionText = "Read a book";
       } else if (obj.type === 'fireplace') {

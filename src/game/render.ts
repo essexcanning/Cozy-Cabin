@@ -740,6 +740,37 @@ const drawObject = (ctx: CanvasRenderingContext2D, obj: GameObject) => {
     ctx.fillRect(-6, -obj.height/2 + 6, 12, 10);
     ctx.fillStyle = '#000';
     ctx.fillRect(-2, -obj.height/2 + 10, 4, 4);
+  } else if (obj.type === 'vault') {
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.fillRect(-obj.width/2 + 5, obj.height/2, obj.width, 10);
+    
+    // Base (metallic)
+    ctx.fillStyle = '#b0bec5';
+    ctx.fillRect(-obj.width/2, -obj.height/2, obj.width, obj.height);
+    
+    // Door outline
+    ctx.strokeStyle = '#78909c';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-obj.width/2 + 4, -obj.height/2 + 4, obj.width - 8, obj.height - 8);
+    
+    // Handle/Wheel
+    ctx.fillStyle = '#455a64';
+    ctx.beginPath();
+    ctx.arc(0, 0, 8, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Wheel spokes
+    ctx.strokeStyle = '#cfd8dc';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-8, 0); ctx.lineTo(8, 0);
+    ctx.moveTo(0, -8); ctx.lineTo(0, 8);
+    ctx.stroke();
+    
+    // Keypad
+    ctx.fillStyle = '#37474f';
+    ctx.fillRect(obj.width/2 - 10, -obj.height/2 + 8, 6, 10);
   } else if (obj.type === 'fireplace') {
     // Shadow
     ctx.fillStyle = 'rgba(0,0,0,0.3)';

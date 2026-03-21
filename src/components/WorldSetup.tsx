@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { auth, db } from '../firebase';
 import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { Home, Users, LogOut } from 'lucide-react';
 import { CharacterCustomization } from './CharacterCustomization';
+import { useLuffa } from '../contexts/LuffaContext';
+import { handleFirestoreError, OperationType } from '../utils/errorHandling';
 
 interface WorldSetupProps {
   onWorldJoined: (worldId: string) => void;
@@ -10,14 +12,72 @@ interface WorldSetupProps {
 
 type SetupStep = 'choose' | 'customize';
 
-import { handleFirestoreError, OperationType } from '../utils/errorHandling';
-
 export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
   const [step, setStep] = useState<SetupStep>('choose');
   const [pendingWorldId, setPendingWorldId] = useState<string | null>(null);
   const [inviteCode, setInviteCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const { isLuffa, luffaUser } = useLuffa();
+
+  useEffect(() => {
+    const setupLuffaWorld = async () => {
+      if (isLuffa && luffaUser && auth.currentUser) {
+        setLoading(true);
+        try {
+          // Deterministic world ID based on Luffa user ID
+          // Since the prompt says "use that ID to either fetch the existing 'Cozy Cabin' or create a new one"
+          // We will use the luffaUser.id as the primary world ID. 
+          // If a partner joins, they should ideally use the same ID or we use the sorted combination.
+          // Let's stick to the sorted combination if partnerId exists, otherwise just luffaUser.id
+          const worldId = luffaUser.partnerId 
+            ? [luffaUser.id, luffaUser.partnerId].sort().join('_')
+            : `luffa_world_${luffaUser.id}`;
+            
+          const worldRef = doc(db, 'worlds', worldId);
+          const worldSnap = await getDoc(worldRef);
+
+          if (!worldSnap.exists()) {
+            // Create world
+            await setDoc(worldRef, {
+              inviteCode: 'LUFFA', // Not used for Luffa
+              ownerId: auth.currentUser.uid,
+              createdAt: serverTimestamp(),
+              shared: {
+                wood: 0,
+                cozyCoins: 0,
+                tasks: [
+                  { id: 't1', text: 'Send a sweet message', completed: false },
+                  { id: 't2', text: 'Plan a weekend walk', completed: false },
+                  { id: 't3', text: 'Complete a joint check-in', completed: false }
+                ],
+                purchasedItems: [],
+                dateNight: null
+              }
+            });
+          } else {
+            // Join world
+            const worldData = worldSnap.data();
+            if (!worldData.partnerId && worldData.ownerId !== auth.currentUser.uid) {
+              await setDoc(worldRef, {
+                partnerId: auth.currentUser.uid
+              }, { merge: true });
+            }
+          }
+
+          setPendingWorldId(worldId);
+          setStep('customize');
+        } catch (err: any) {
+          console.error("Luffa world setup error:", err);
+          setError('Failed to setup Luffa world.');
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+
+    setupLuffaWorld();
+  }, [isLuffa, luffaUser]);
 
   const generateInviteCode = () => {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -160,6 +220,14 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
     return (
       <div className="min-h-screen bg-stone-950 flex items-center justify-center p-4">
         <CharacterCustomization onComplete={handleCustomizationComplete} />
+      </div>
+    );
+  }
+
+  if (isLuffa) {
+    return (
+      <div className="min-h-screen bg-stone-900 flex items-center justify-center p-4">
+        <div className="text-stone-400">Setting up your Luffa world...</div>
       </div>
     );
   }

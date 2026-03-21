@@ -12,11 +12,17 @@ import { motion, AnimatePresence } from 'motion/react';
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 import { handleFirestoreError, OperationType } from '../utils/errorHandling';
+import { useLuffa } from '../contexts/LuffaContext';
 
 export default function GameCanvas({ worldId }: { worldId: string }) {
+  const { isLuffa, sendLuffaNotification, minimizeApp, edsBalance, sendTransaction, refreshBalance } = useLuffa();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState] = useState<GameState>(createInitialState());
   const [isChestOpen, setIsChestOpen] = useState(false);
+  const [isVaultOpen, setIsVaultOpen] = useState(false);
+  const [isMinting, setIsMinting] = useState(false);
+  const [mintTxHash, setMintTxHash] = useState<string | null>(null);
+  const [tickerMessage, setTickerMessage] = useState<string | null>(null);
   const [isTasksOpen, setIsTasksOpen] = useState(false);
   const [isCoachOpen, setIsCoachOpen] = useState(false);
   const [isCustomizeOpen, setIsCustomizeOpen] = useState(false);
@@ -263,14 +269,16 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (gameState.ui.chestOpen || gameState.ui.tasksOpen || gameState.ui.coachOpen || gameState.ui.dateNightOpen) {
+      if (gameState.ui.chestOpen || gameState.ui.tasksOpen || gameState.ui.coachOpen || gameState.ui.dateNightOpen || gameState.ui.vaultOpen) {
         if (e.key === 'Escape') {
           setIsChestOpen(false);
           setIsTasksOpen(false);
           setIsCoachOpen(false);
+          setIsVaultOpen(false);
           gameState.ui.chestOpen = false;
           gameState.ui.tasksOpen = false;
           gameState.ui.coachOpen = false;
+          gameState.ui.vaultOpen = false;
         }
         return;
       }
@@ -304,6 +312,9 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
           } else if (target.type === 'chest') {
             setIsChestOpen(true);
             gameState.ui.chestOpen = true;
+          } else if (target.type === 'vault') {
+            setIsVaultOpen(true);
+            gameState.ui.vaultOpen = true;
           } else if (target.type === 'mailbox') {
             setIsTasksOpen(true);
             gameState.ui.tasksOpen = true;
@@ -344,6 +355,7 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
         gameState.spirit.targetX = gameState.player.x + 30;
         gameState.spirit.targetY = gameState.player.y;
         gameState.spirit.speechBubble = "It's looking a bit chilly in here! Why not send your partner a compliment to warm things up?";
+        sendLuffaNotification("Spirit: The Cabin is getting chilly! Check the tasks board!");
         
         setTimeout(() => {
           gameState.spirit.speechBubble = null;
@@ -467,6 +479,35 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       }
     };
   }, [gameState]);
+
+  const handleMintCozyCoins = async () => {
+    if (sharedState.cozyCoins <= 0) return;
+    
+    setIsMinting(true);
+    setMintTxHash(null);
+    
+    try {
+      // Real blockchain transaction via Luffa SDK
+      // Sending a micro-payment (0.1 EDS) to a placeholder Cabin Treasury address
+      const hash = await sendTransaction(0.1, '0x0000000000000000000000000000000000000000000000000000000000000000');
+      
+      // Only reset Cozy Coins after successful transaction
+      await updateDoc(doc(db, 'worlds', worldId), {
+        'shared.cozyCoins': 0
+      });
+      
+      setMintTxHash(hash);
+      refreshBalance(); // Fetch updated EDS balance
+      
+      // Trigger Live Ticker
+      setTickerMessage("A new memory was just secured on the Endless chain! 🌿");
+      setTimeout(() => setTickerMessage(null), 15000);
+    } catch (error) {
+      console.error("Minting failed:", error);
+    } finally {
+      setIsMinting(false);
+    }
+  };
 
   const generateCoachAdvice = async () => {
     setIsCoachLoading(true);
@@ -606,6 +647,15 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-black">
+      {/* Live Ticker */}
+      {tickerMessage && (
+        <div className="absolute top-0 left-0 w-full bg-indigo-900/90 text-white py-1.5 z-[60] overflow-hidden border-b border-indigo-500/50 flex items-center">
+          <div className="whitespace-nowrap animate-marquee font-bold tracking-wider text-sm">
+            {tickerMessage}
+          </div>
+        </div>
+      )}
+
       <canvas
         ref={canvasRef}
         className="block w-full h-full"
@@ -616,7 +666,7 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       <motion.div 
         initial={{ x: -100, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
-        className="absolute top-4 left-4 bg-black/50 text-white p-4 rounded-xl backdrop-blur-sm flex flex-col gap-2"
+        className={`absolute left-4 bg-black/50 text-white p-4 rounded-xl backdrop-blur-sm flex flex-col gap-2 transition-all ${tickerMessage ? 'top-12' : 'top-4'}`}
       >
         <div className="flex items-center gap-2 font-bold">
           <span className="text-amber-700 text-xl">🪵</span> Wood: {sharedState.wood}
@@ -666,7 +716,7 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       )}
 
       {/* Controls Help */}
-      <div className="absolute top-4 right-4 bg-black/50 text-white p-4 rounded-xl backdrop-blur-sm flex flex-col gap-4">
+      <div className={`absolute right-4 bg-black/50 text-white p-4 rounded-xl backdrop-blur-sm flex flex-col gap-4 transition-all ${tickerMessage ? 'top-12' : 'top-4'}`}>
         <div className="flex gap-2 justify-between">
           <button 
             onClick={handleToggleBgm}
@@ -705,12 +755,21 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
           </div>
         )}
 
-        <button 
-          onClick={() => auth.signOut()}
-          className="w-full bg-red-900/50 hover:bg-red-800/50 text-red-200 py-2 rounded text-sm font-medium transition-colors"
-        >
-          Sign Out
-        </button>
+        {isLuffa ? (
+          <button 
+            onClick={minimizeApp}
+            className="w-full bg-indigo-900/50 hover:bg-indigo-800/50 text-indigo-200 py-2 rounded text-sm font-medium transition-colors"
+          >
+            Back to Chat
+          </button>
+        ) : (
+          <button 
+            onClick={() => auth.signOut()}
+            className="w-full bg-red-900/50 hover:bg-red-800/50 text-red-200 py-2 rounded text-sm font-medium transition-colors"
+          >
+            Sign Out
+          </button>
+        )}
       </div>
 
       {/* Tasks Menu Overlay */}
@@ -961,6 +1020,82 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
               </button>
             </div>
           </motion.div>
+        </div>
+      )}
+
+      {/* Vault Menu Overlay */}
+      {isVaultOpen && (
+        <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="bg-slate-800 p-8 rounded-2xl border-4 border-slate-600 shadow-2xl w-96 text-center">
+            <h2 className="text-3xl font-bold text-slate-200 mb-2">The Vault</h2>
+            <p className="text-slate-400 mb-8 text-sm">Endless Blockchain Integration</p>
+            
+            <div className="bg-slate-900 rounded-xl p-6 mb-8 border border-slate-700">
+              <div className="flex justify-between items-center mb-4">
+                <div className="text-slate-400 text-sm">Cozy Coins</div>
+                <div className="text-2xl font-bold text-yellow-400">{sharedState.cozyCoins} 🪙</div>
+              </div>
+              <div className="flex justify-between items-center pt-4 border-t border-slate-800">
+                <div className="text-slate-400 text-sm">Wallet Balance</div>
+                <div className="text-2xl font-bold text-blue-400">{edsBalance !== null ? edsBalance : '...'} EDS</div>
+              </div>
+            </div>
+
+            {isMinting ? (
+              <div className="animate-pulse flex flex-col items-center">
+                <div className="w-12 h-12 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin mb-4"></div>
+                <p className="text-yellow-400 font-bold">Transaction Pending...</p>
+                <p className="text-slate-400 text-xs mt-2">Minting to Endless Wallet</p>
+              </div>
+            ) : mintTxHash ? (
+              <div className="flex flex-col items-center">
+                <div className="w-16 h-16 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center text-3xl mb-4 border border-green-500/50">
+                  ✓
+                </div>
+                <p className="text-green-400 font-bold mb-2">Minting Successful!</p>
+                <p className="text-slate-400 text-xs break-all bg-slate-900 p-2 rounded w-full font-mono border border-slate-700">
+                  Tx: {mintTxHash}
+                </p>
+                <a
+                  href={`https://scan.endless.link/tx/${mintTxHash}?network=testnet`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-4 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors w-full"
+                >
+                  View on Explorer
+                </a>
+                <button 
+                  onClick={() => setMintTxHash(null)}
+                  className="mt-4 text-slate-400 hover:text-white text-sm underline"
+                >
+                  Mint More
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleMintCozyCoins}
+                disabled={sharedState.cozyCoins <= 0}
+                className={`w-full py-4 rounded-xl font-bold text-lg transition-all shadow-lg ${
+                  sharedState.cozyCoins > 0 
+                    ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-slate-900 hover:scale-105 hover:shadow-yellow-500/20' 
+                    : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                }`}
+              >
+                Mint Cozy Coins to Endless Wallet
+              </button>
+            )}
+
+            <button 
+              className="mt-8 text-slate-400 hover:text-white font-bold transition-colors"
+              onClick={() => {
+                setIsVaultOpen(false);
+                gameState.ui.vaultOpen = false;
+                setMintTxHash(null);
+              }}
+            >
+              Close Vault
+            </button>
+          </div>
         </div>
       )}
 
