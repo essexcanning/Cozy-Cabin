@@ -27,7 +27,44 @@
         "inviteCode": { "type": "string" },
         "ownerId": { "type": "string" },
         "partnerId": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "shared": {
+          "type": "object",
+          "properties": {
+            "wood": { "type": "number" },
+            "cozyCoins": { "type": "number" },
+            "tasks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "text": { "type": "string" },
+                  "completed": { "type": "boolean" }
+                }
+              }
+            },
+            "purchasedItems": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "dateNight": { "type": "string", "nullable": true },
+            "lastInteractionAt": { "type": "number" },
+            "placedItems": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "type": { "type": "string" },
+                  "x": { "type": "number" },
+                  "y": { "type": "number" },
+                  "data": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
       },
       "required": ["inviteCode", "ownerId", "createdAt"]
     },

@@ -12,7 +12,7 @@ export interface GameObject {
   y: number;
   width: number;
   height: number;
-  type: 'tree' | 'cabin' | 'bed' | 'rug' | 'table' | 'chair' | 'mailbox' | 'fence' | 'chest' | 'bookshelf' | 'fireplace' | 'mirror' | 'cat' | 'luxury_rug' | 'high_end_lamp' | 'gramophone' | 'potted_plant' | 'wall_art';
+  type: 'tree' | 'cabin' | 'bed' | 'rug' | 'table' | 'chair' | 'mailbox' | 'fence' | 'chest' | 'bookshelf' | 'fireplace' | 'mirror' | 'cat' | 'luxury_rug' | 'high_end_lamp' | 'gramophone' | 'potted_plant' | 'wall_art' | 'magic_easel' | 'painting';
   solid: boolean;
   interactable?: boolean;
   onInteract?: () => void;
@@ -23,6 +23,29 @@ export interface GameObject {
   animFrame?: number;
   moveTimer?: number;
   catState?: 'sleeping' | 'walking' | 'playing' | 'chasing';
+}
+
+export interface PlacedItem {
+  id: string;
+  type: 'painting' | 'magic_easel';
+  x: number;
+  y: number;
+  data?: string;
+}
+
+export interface NPC {
+  id: string;
+  x: number;
+  y: number;
+  targetX: number;
+  targetY: number;
+  facing: 'up' | 'down' | 'left' | 'right';
+  isMoving: boolean;
+  isWalking: boolean;
+  animFrame: number;
+  state: 'idle' | 'walking';
+  speechBubble: string | null;
+  speechTimer: number;
 }
 
 export interface GameState {
@@ -49,6 +72,7 @@ export interface GameState {
     facialFeature?: string;
     lastFootstep?: number;
   };
+  spirit: NPC;
   otherPlayers: {
     [uid: string]: {
       x: number;
@@ -90,6 +114,8 @@ export interface GameState {
     tasks: Task[];
     purchasedItems: string[];
     dateNight: { active: boolean; prompt: string } | null;
+    lastInteractionAt: number;
+    placedItems: PlacedItem[];
   };
   ui: {
     chestOpen: boolean;
@@ -186,7 +212,23 @@ export const createInitialState = (): GameState => {
         { id: 't3', text: 'Complete a joint check-in', completed: false }
       ],
       purchasedItems: [],
-      dateNight: null
+      dateNight: null,
+      lastInteractionAt: Date.now(),
+      placedItems: []
+    },
+    spirit: {
+      id: 'spirit',
+      x: 0,
+      y: 0,
+      targetX: 0,
+      targetY: 0,
+      facing: 'down',
+      isMoving: false,
+      isWalking: false,
+      animFrame: 0,
+      state: 'idle',
+      speechBubble: null,
+      speechTimer: 0
     },
     ui: { chestOpen: false, tasksOpen: false, coachOpen: false, dateNightOpen: false },
     objects: {

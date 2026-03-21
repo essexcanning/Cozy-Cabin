@@ -83,6 +83,20 @@ export const updateGame = (state: GameState, deltaTime: number) => {
     }
   }
 
+  // Update Spirit NPC
+  if (state.spirit.isWalking) {
+    const dx = state.spirit.targetX - state.spirit.x;
+    const dy = state.spirit.targetY - state.spirit.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    
+    if (dist > 2) {
+      state.spirit.x += (dx / dist) * 1.5 * timeScale;
+      state.spirit.y += (dy / dist) * 1.5 * timeScale;
+    } else {
+      state.spirit.isWalking = false;
+    }
+  }
+
   let newX = state.player.x + state.player.dx * timeScale;
   let newY = state.player.y + state.player.dy * timeScale;
 
@@ -356,6 +370,10 @@ export const updateGame = (state: GameState, deltaTime: number) => {
         state.interactionText = "Warm your hands";
       } else if (obj.type === 'mirror') {
         state.interactionText = "Talk to Relationship Coach";
+      } else if (obj.type === 'magic_easel') {
+        state.interactionText = "Press E to Paint a Memory";
+      } else if (obj.type === 'painting') {
+        state.interactionText = "A beautiful memory...";
       } else if (obj.type === 'cabin') {
         // Handled by collision
       }

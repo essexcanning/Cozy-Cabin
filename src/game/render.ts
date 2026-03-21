@@ -24,10 +24,14 @@ export const renderGame = (ctx: CanvasRenderingContext2D, state: GameState, widt
   }
 
   // Sort remaining objects by Y position for depth sorting
-  const renderables: (GameObject | { type: 'player', isLocal: boolean, uid?: string, y: number })[] = [
+  const renderables: (GameObject | { type: 'player', isLocal: boolean, uid?: string, y: number } | { type: 'spirit', y: number })[] = [
     ...state.objects[state.scene].filter(obj => obj.type !== 'rug' && obj.type !== 'luxury_rug'),
     { type: 'player', isLocal: true, y: state.player.y }
   ];
+
+  if (state.scene === 'inside') {
+    renderables.push({ type: 'spirit', y: state.spirit.y });
+  }
 
   for (const [uid, otherPlayer] of Object.entries(state.otherPlayers)) {
     if (otherPlayer.scene === state.scene) {
@@ -36,8 +40,8 @@ export const renderGame = (ctx: CanvasRenderingContext2D, state: GameState, widt
   }
 
   renderables.sort((a, b) => {
-    const yA = a.type === 'player' ? a.y : a.y + (a as GameObject).height / 2;
-    const yB = b.type === 'player' ? b.y : b.y + (b as GameObject).height / 2;
+    const yA = a.type === 'player' || a.type === 'spirit' ? a.y : a.y + (a as GameObject).height / 2;
+    const yB = b.type === 'player' || b.type === 'spirit' ? b.y : b.y + (b as GameObject).height / 2;
     return yA - yB;
   });
 
@@ -49,6 +53,8 @@ export const renderGame = (ctx: CanvasRenderingContext2D, state: GameState, widt
       } else {
         drawPlayer(ctx, state.otherPlayers[pItem.uid]);
       }
+    } else if (item.type === 'spirit') {
+      drawNPC(ctx, state.spirit);
     } else {
       drawObject(ctx, item as GameObject);
     }
@@ -1162,6 +1168,102 @@ const drawObject = (ctx: CanvasRenderingContext2D, obj: GameObject) => {
     ctx.fillRect(0, 0, 15, 15);
     ctx.fillStyle = '#ffeb3b';
     ctx.beginPath(); ctx.moveTo(-10, 10); ctx.lineTo(0, 20); ctx.lineTo(-20, 20); ctx.fill();
+  } else if (obj.type === 'magic_easel') {
+    // Easel legs
+    ctx.strokeStyle = '#5d4037';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-10, 20); ctx.lineTo(0, -10); ctx.lineTo(10, 20);
+    ctx.moveTo(0, -10); ctx.lineTo(0, 25);
+    ctx.stroke();
+    // Canvas board
+    ctx.fillStyle = '#f5f5f5';
+    ctx.fillRect(-15, -20, 30, 25);
+    ctx.strokeStyle = '#3e2723';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-15, -20, 30, 25);
+    // Sparkle effect
+    const time = Date.now() / 400;
+    ctx.fillStyle = '#81d4fa';
+    ctx.beginPath();
+    ctx.arc(Math.sin(time)*15, Math.cos(time)*15 - 10, 2, 0, Math.PI*2);
+    ctx.fill();
+  } else if (obj.type === 'painting') {
+    // Frame
+    ctx.fillStyle = '#ffd54f';
+    ctx.fillRect(-20, -15, 40, 30);
+    // The actual painting
+    if (obj.onInteract) { // We'll use onInteract to store the image data in a hacky way or just draw placeholder
+       // In renderGame we should handle the actual data
+    }
+    ctx.fillStyle = '#000';
+    ctx.fillRect(-18, -13, 36, 26);
+  }
+
+  ctx.restore();
+};
+
+export const drawNPC = (ctx: CanvasRenderingContext2D, npc: any) => {
+  ctx.save();
+  ctx.translate(npc.x, npc.y);
+
+  // Floating effect
+  const float = Math.sin(Date.now() / 500) * 5;
+  ctx.translate(0, float);
+
+  // Shadow
+  ctx.fillStyle = 'rgba(129, 212, 250, 0.2)';
+  ctx.beginPath();
+  ctx.ellipse(0, 15 - float, 12, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Spirit Body (Wispy Blue)
+  const gradient = ctx.createRadialGradient(0, 0, 2, 0, 0, 15);
+  gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+  gradient.addColorStop(0.5, 'rgba(129, 212, 250, 0.6)');
+  gradient.addColorStop(1, 'rgba(129, 212, 250, 0)');
+  
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(0, 0, 15, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Eyes
+  ctx.fillStyle = 'white';
+  ctx.beginPath();
+  ctx.arc(-4, -2, 2, 0, Math.PI * 2);
+  ctx.arc(4, -2, 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Speech Bubble
+  if (npc.speechBubble) {
+    ctx.save();
+    ctx.translate(0, -40);
+    
+    const text = npc.speechBubble;
+    ctx.font = '12px "Inter", sans-serif';
+    const metrics = ctx.measureText(text);
+    const padding = 10;
+    const bw = metrics.width + padding * 2;
+    const bh = 30;
+
+    ctx.fillStyle = 'white';
+    ctx.beginPath();
+    ctx.roundRect(-bw / 2, -bh, bw, bh, 8);
+    ctx.fill();
+    
+    // Triangle pointer
+    ctx.beginPath();
+    ctx.moveTo(-5, 0);
+    ctx.lineTo(5, 0);
+    ctx.lineTo(0, 5);
+    ctx.fill();
+
+    ctx.fillStyle = '#333';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 0, -bh / 2);
+    ctx.restore();
   }
 
   ctx.restore();

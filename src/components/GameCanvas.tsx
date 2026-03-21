@@ -7,6 +7,7 @@ import { auth, db } from '../firebase';
 import { doc, setDoc, getDoc, onSnapshot, collection, serverTimestamp, updateDoc, increment } from 'firebase/firestore';
 import { GoogleGenAI } from '@google/genai';
 import { CharacterCustomization } from './CharacterCustomization';
+import { motion, AnimatePresence } from 'motion/react';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -19,6 +20,9 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
   const [isTasksOpen, setIsTasksOpen] = useState(false);
   const [isCoachOpen, setIsCoachOpen] = useState(false);
   const [isCustomizeOpen, setIsCustomizeOpen] = useState(false);
+  const [isEaselOpen, setIsEaselOpen] = useState(false);
+  const [easelPrompt, setEaselPrompt] = useState('');
+  const [isEaselLoading, setIsEaselLoading] = useState(false);
   const [coachMessage, setCoachMessage] = useState<string>("Hello! I'm your Cozy Coach. Let me look at your tasks...");
   const [isCoachLoading, setIsCoachLoading] = useState(false);
   const [particles, setParticles] = useState<{x: number, y: number, id: number}[]>([]);
@@ -33,6 +37,8 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       { id: 't3', text: 'Complete a joint check-in', completed: false }
     ],
     purchasedItems: [] as string[],
+    placedItems: [] as any[],
+    lastInteractionAt: Date.now(),
     dateNight: null as { active: boolean, prompt: string } | null
   });
 
@@ -99,6 +105,26 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
           if (data.shared.purchasedItems?.includes('wall_art')) {
             newInsideObjects.push({ id: 'wall_art', x: 0, y: -100, width: 40, height: 30, type: 'wall_art', solid: false });
           }
+          if (data.shared.purchasedItems?.includes('magic_easel')) {
+            newInsideObjects.push({ id: 'magic_easel', x: 60, y: 40, width: 30, height: 40, type: 'magic_easel', solid: true, interactable: true });
+          }
+
+          // Add placed items (paintings)
+          if (data.shared.placedItems) {
+            data.shared.placedItems.forEach((item: any) => {
+              newInsideObjects.push({ 
+                id: item.id, 
+                x: item.x, 
+                y: item.y, 
+                width: 40, 
+                height: 30, 
+                type: item.type, 
+                solid: false, 
+                interactable: true,
+                onInteract: item.data // Store image data here
+              });
+            });
+          }
           
           gameState.objects.inside = newInsideObjects;
         } else {
@@ -113,6 +139,8 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
                 { id: 't3', text: 'Complete a joint check-in', completed: false }
               ],
               purchasedItems: [],
+              placedItems: [],
+              lastInteractionAt: Date.now(),
               dateNight: null
             }
           }).catch(err => {
@@ -259,6 +287,9 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
             setIsCoachOpen(true);
             gameState.ui.coachOpen = true;
             generateCoachAdvice();
+          } else if (target.type === 'magic_easel') {
+            setIsEaselOpen(true);
+            gameState.ui.coachOpen = true; // Use this to block movement
           } else if (target.type === 'bed') {
             // Simple sleep effect
             const overlay = document.getElementById('sleep-overlay');
@@ -276,6 +307,25 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
     const handleKeyUp = (e: KeyboardEvent) => {
       gameState.keys[e.key] = false;
     };
+
+    // Spirit Proactivity Logic
+    const proactivityInterval = setInterval(() => {
+      if (gameState.scene !== 'inside') return;
+      
+      const lastInteraction = sharedState.lastInteractionAt || Date.now();
+      const hoursSince = (Date.now() - lastInteraction) / (1000 * 60 * 60);
+      
+      if (hoursSince >= 4 && !gameState.spirit.isWalking) {
+        gameState.spirit.isWalking = true;
+        gameState.spirit.targetX = gameState.player.x + 30;
+        gameState.spirit.targetY = gameState.player.y;
+        gameState.spirit.speechBubble = "It's looking a bit chilly in here! Why not send your partner a compliment to warm things up?";
+        
+        setTimeout(() => {
+          gameState.spirit.speechBubble = null;
+        }, 10000);
+      }
+    }, 60000);
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -414,6 +464,53 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
     }
   };
 
+  const generatePainting = async () => {
+    if (!easelPrompt.trim()) return;
+    setIsEaselLoading(true);
+    try {
+      const prompt = `A 2D pixel-art painting of a memory: ${easelPrompt}. Cozy, warm colors, simple shapes, 64x64 style.`;
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: [{ text: prompt }],
+        config: {
+          imageConfig: {
+            aspectRatio: "4:3",
+          }
+        }
+      });
+
+      let base64Data = '';
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) {
+          base64Data = part.inlineData.data;
+          break;
+        }
+      }
+
+      if (base64Data) {
+        const newPainting = {
+          id: `painting_${Date.now()}`,
+          type: 'painting',
+          x: Math.random() * 200 - 100,
+          y: -100, // Wall position
+          data: base64Data
+        };
+
+        await updateDoc(doc(db, 'worlds', worldId), {
+          'shared.placedItems': [...sharedState.placedItems, newPainting]
+        });
+        
+        setIsEaselOpen(false);
+        gameState.ui.coachOpen = false;
+        setEaselPrompt('');
+      }
+    } catch (error) {
+      console.error("Easel error:", error);
+    } finally {
+      setIsEaselLoading(false);
+    }
+  };
+
   const [isBgmPlaying, setIsBgmPlaying] = useState(false);
 
   const handleToggleBgm = () => {
@@ -442,7 +539,8 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
 
     await updateDoc(doc(db, 'worlds', worldId), {
       'shared.tasks': newTasks,
-      'shared.cozyCoins': sharedState.cozyCoins + 10
+      'shared.cozyCoins': sharedState.cozyCoins + 10,
+      'shared.lastInteractionAt': Date.now()
     }).catch(err => {
       if (err.message?.includes('Quota exceeded')) setQuotaExceeded(true);
     });
@@ -469,25 +567,37 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       />
       
       {/* HUD Layer */}
-      <div className="absolute top-4 left-4 bg-black/50 text-white p-4 rounded-xl backdrop-blur-sm flex flex-col gap-2">
+      <motion.div 
+        initial={{ x: -100, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        className="absolute top-4 left-4 bg-black/50 text-white p-4 rounded-xl backdrop-blur-sm flex flex-col gap-2"
+      >
         <div className="flex items-center gap-2 font-bold">
           <span className="text-amber-700 text-xl">🪵</span> Wood: {sharedState.wood}
         </div>
-        <div className="flex items-center gap-2 font-bold">
+        <motion.div 
+          key={sharedState.cozyCoins}
+          animate={{ scale: [1, 1.2, 1] }}
+          className="flex items-center gap-2 font-bold"
+        >
           <span className="text-yellow-400 text-xl">🪙</span> Cozy Coins: {sharedState.cozyCoins}
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
 
       {/* Heart Particles */}
-      {particles.map(p => (
-        <div 
-          key={p.id}
-          className="absolute text-pink-500 text-3xl animate-float-up pointer-events-none"
-          style={{ left: p.x, top: p.y }}
-        >
-          ❤️
-        </div>
-      ))}
+      <AnimatePresence>
+        {particles.map(p => (
+          <motion.div 
+            key={p.id}
+            initial={{ y: p.y, x: p.x, opacity: 1, scale: 0.5 }}
+            animate={{ y: p.y - 100, opacity: 0, scale: 1.5 }}
+            exit={{ opacity: 0 }}
+            className="absolute text-pink-500 text-3xl pointer-events-none"
+          >
+            ❤️
+          </motion.div>
+        ))}
+      </AnimatePresence>
 
       {/* Sleep Transition Overlay */}
       <div 
@@ -691,6 +801,7 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
                 { id: 'gramophone', name: 'Gramophone', cost: 40, icon: '📻' },
                 { id: 'potted_plant', name: 'Potted Plant', cost: 15, icon: '🪴' },
                 { id: 'wall_art', name: 'Wall Art', cost: 25, icon: '🖼️' },
+                { id: 'magic_easel', name: 'Magic Easel', cost: 50, icon: '🎨' },
                 { id: 'outfit_overalls', name: 'Overalls', cost: 15, icon: '👖' },
                 { id: 'outfit_dress', name: 'Sundress', cost: 15, icon: '👗' },
                 { id: 'outfit_suit', name: 'Sharp Suit', cost: 25, icon: '👔' },
@@ -751,6 +862,59 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
               Close (Esc)
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Magic Easel Modal */}
+      {isEaselOpen && (
+        <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-stone-100 p-8 rounded-2xl border-4 border-stone-400 shadow-2xl w-[450px]"
+          >
+            <h2 className="text-3xl font-serif font-bold text-stone-800 mb-6 flex items-center gap-3">
+              <span>🎨</span> Magic Easel
+            </h2>
+            <p className="text-stone-600 mb-4 italic">"What memory should I paint for you?"</p>
+            
+            <textarea
+              className="w-full p-4 rounded-xl border-2 border-stone-300 focus:border-stone-500 outline-none min-h-[120px] mb-6 text-stone-800"
+              placeholder="Describe a special moment (e.g., 'Our first walk in the rain', 'Drinking coffee by the fire')..."
+              value={easelPrompt}
+              onChange={(e) => setEaselPrompt(e.target.value)}
+              disabled={isEaselLoading}
+            />
+
+            <div className="flex gap-4">
+              <button 
+                className="flex-1 bg-stone-800 text-white p-4 rounded-xl hover:bg-stone-700 font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                onClick={generatePainting}
+                disabled={isEaselLoading || !easelPrompt.trim()}
+              >
+                {isEaselLoading ? (
+                  <>
+                    <span className="animate-spin">🌀</span> Painting...
+                  </>
+                ) : (
+                  <>
+                    <span>✨</span> Create Masterpiece
+                  </>
+                )}
+              </button>
+              
+              <button 
+                className="bg-stone-300 text-stone-700 px-6 rounded-xl hover:bg-stone-400 font-bold transition-colors"
+                onClick={() => {
+                  setIsEaselOpen(false);
+                  gameState.ui.coachOpen = false;
+                }}
+                disabled={isEaselLoading}
+              >
+                Cancel
+              </button>
+            </div>
+          </motion.div>
         </div>
       )}
 

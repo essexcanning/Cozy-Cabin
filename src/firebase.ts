@@ -17,9 +17,21 @@ const firebaseConfig = {
   measurementId: localConfig.measurementId || import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
+if (!firebaseConfig.apiKey) {
+  console.warn('Firebase API Key is missing. Please ensure firebase-applet-config.json exists or environment variables are set.');
+}
+
 const databaseId = localConfig.firestoreDatabaseId || import.meta.env.VITE_FIRESTORE_DATABASE_ID;
 
-const app = initializeApp(firebaseConfig);
+let app;
+try {
+  app = initializeApp(firebaseConfig);
+} catch (error) {
+  console.error('Failed to initialize Firebase:', error);
+  // Create a dummy app object to prevent crashes on export
+  app = { name: '[DEFAULT]' } as any;
+}
+
 export const db = getFirestore(app, databaseId);
 
 // Enable persistence
