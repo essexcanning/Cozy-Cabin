@@ -8,7 +8,14 @@
         "uid": { "type": "string" },
         "displayName": { "type": "string" },
         "email": { "type": "string" },
-        "worldId": { "type": "string" }
+        "worldId": { "type": "string" },
+        "gender": { "type": "string" },
+        "hairStyle": { "type": "string" },
+        "hairColor": { "type": "string" },
+        "skinColor": { "type": "string" },
+        "eyeColor": { "type": "string" },
+        "accessory": { "type": "string" },
+        "facialFeature": { "type": "string" }
       },
       "required": ["uid", "email"]
     },
@@ -33,6 +40,18 @@
         "x": { "type": "number" },
         "y": { "type": "number" },
         "scene": { "type": "string" },
+        "facing": { "type": "string" },
+        "isMoving": { "type": "boolean" },
+        "animFrame": { "type": "number" },
+        "color": { "type": "string" },
+        "outfit": { "type": "string" },
+        "gender": { "type": "string" },
+        "hairStyle": { "type": "string" },
+        "hairColor": { "type": "string" },
+        "skinColor": { "type": "string" },
+        "eyeColor": { "type": "string" },
+        "accessory": { "type": "string" },
+        "facialFeature": { "type": "string" },
         "lastUpdated": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "x", "y", "scene", "lastUpdated"]

@@ -281,8 +281,23 @@ const drawInteriorRoom = (ctx: CanvasRenderingContext2D) => {
   ctx.fillText('WELCOME', 0, roomHeight / 2 - 5);
 };
 
-const drawPlayer = (ctx: CanvasRenderingContext2D, player: { x: number, y: number, facing: string, isMoving: boolean, animFrame: number, color?: string, outfit?: string }) => {
-  const { x, y, facing, isMoving, animFrame, color, outfit } = player;
+export const drawPlayer = (ctx: CanvasRenderingContext2D, player: { 
+  x: number, 
+  y: number, 
+  facing: string, 
+  isMoving: boolean, 
+  animFrame: number, 
+  color?: string, 
+  outfit?: string,
+  gender?: string,
+  hairStyle?: string,
+  hairColor?: string,
+  skinColor?: string,
+  eyeColor?: string,
+  accessory?: string,
+  facialFeature?: string
+}) => {
+  const { x, y, facing, isMoving, animFrame, color, outfit, hairStyle, hairColor, skinColor, eyeColor, accessory, facialFeature } = player;
   
   ctx.save();
   ctx.translate(x, y);
@@ -316,6 +331,7 @@ const drawPlayer = (ctx: CanvasRenderingContext2D, player: { x: number, y: numbe
 
   const drawArms = () => {
     ctx.fillStyle = getShirtColor();
+    const skin = skinColor || '#ffe0b2';
     if (facing === 'left' || facing === 'right') {
       // One arm visible
       ctx.beginPath();
@@ -323,7 +339,7 @@ const drawPlayer = (ctx: CanvasRenderingContext2D, player: { x: number, y: numbe
       ctx.fill();
       
       // Hand
-      ctx.fillStyle = '#ffe0b2';
+      ctx.fillStyle = skin;
       ctx.beginPath();
       ctx.arc(armSwing, 8, 2.5, 0, Math.PI * 2);
       ctx.fill();
@@ -335,7 +351,7 @@ const drawPlayer = (ctx: CanvasRenderingContext2D, player: { x: number, y: numbe
       ctx.fill();
       
       // Hands
-      ctx.fillStyle = '#ffe0b2';
+      ctx.fillStyle = skin;
       ctx.beginPath();
       ctx.arc(-10, 8 + armSwing, 2.5, 0, Math.PI * 2);
       ctx.arc(10, 8 - armSwing, 2.5, 0, Math.PI * 2);
@@ -398,63 +414,107 @@ const drawPlayer = (ctx: CanvasRenderingContext2D, player: { x: number, y: numbe
   if (facing !== 'up') drawArms();
 
   // Head
-  ctx.fillStyle = '#ffe0b2'; // Skin tone
+  const skin = skinColor || '#ffe0b2';
+  ctx.fillStyle = skin;
   ctx.beginPath();
   ctx.arc(0, -12, 10, 0, Math.PI * 2);
   ctx.fill();
 
-  // Hair/Hat
-  if (outfit === 'outfit_winter_coat') {
-    ctx.fillStyle = '#0277bd'; // Beanie
+  // Facial Features
+  if (facing === 'down') {
+    if (facialFeature === 'beard') {
+      ctx.fillStyle = hairColor || '#5d4037';
+      ctx.beginPath();
+      ctx.arc(0, -8, 6, 0, Math.PI);
+      ctx.fill();
+    } else if (facialFeature === 'freckles') {
+      ctx.fillStyle = 'rgba(0,0,0,0.1)';
+      ctx.beginPath(); ctx.arc(-4, -9, 1, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(-2, -8, 1, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2, -8, 1, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(4, -9, 1, 0, Math.PI*2); ctx.fill();
+    } else if (facialFeature === 'blush') {
+      ctx.fillStyle = 'rgba(255,100,100,0.3)';
+      ctx.beginPath(); ctx.arc(-6, -9, 3, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(6, -9, 3, 0, Math.PI*2); ctx.fill();
+    }
+  }
+
+  // Hair
+  const hair = hairColor || '#5d4037';
+  ctx.fillStyle = hair;
+  
+  if (hairStyle === 'short') {
     ctx.beginPath();
     ctx.arc(0, -14, 10, Math.PI, 0);
     ctx.fill();
-    ctx.fillStyle = '#ffffff'; // Pom pom
+  } else if (hairStyle === 'long') {
     ctx.beginPath();
-    ctx.arc(0, -24, 4, 0, Math.PI * 2);
+    ctx.arc(0, -14, 10, Math.PI, 0);
     ctx.fill();
-  } else if (outfit === 'outfit_pajamas') {
-    ctx.fillStyle = '#90caf9'; // Nightcap
+    // Long strands
+    ctx.fillRect(-10, -14, 4, 15);
+    ctx.fillRect(6, -14, 4, 15);
+  } else if (hairStyle === 'bob') {
     ctx.beginPath();
-    ctx.moveTo(-10, -14);
-    ctx.lineTo(10, -14);
-    ctx.lineTo(15, -22);
-    ctx.lineTo(-5, -25);
+    ctx.arc(0, -14, 10, Math.PI, 0);
     ctx.fill();
-    ctx.fillStyle = '#ffffff'; // Pom pom
+    ctx.fillRect(-10, -14, 20, 8);
+  } else if (hairStyle === 'curly') {
     ctx.beginPath();
-    ctx.arc(15, -22, 3, 0, Math.PI * 2);
+    for (let i = 0; i < 5; i++) {
+      ctx.arc(-10 + i * 5, -16, 5, 0, Math.PI * 2);
+    }
     ctx.fill();
-  } else {
-    ctx.fillStyle = '#5d4037'; // Brown hair
+  } else if (hairStyle === 'ponytail') {
+    ctx.beginPath();
+    ctx.arc(0, -14, 10, Math.PI, 0);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(8, -10, 5, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (hairStyle === 'bald') {
+    // No hair
+  } else if (!hairStyle) {
+    // Default
     ctx.beginPath();
     ctx.arc(0, -14, 10, Math.PI, 0);
     ctx.fill();
   }
 
-  // Face
-  ctx.fillStyle = '#3e2723';
+  // Face (Eyes)
+  const eye = eyeColor || '#3e2723';
+  ctx.fillStyle = eye;
   if (facing === 'down') {
-    if (outfit === 'outfit_pajamas') {
-      // Sleepy eyes
-      ctx.beginPath(); ctx.moveTo(-5, -12); ctx.lineTo(-2, -10); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(5, -12); ctx.lineTo(2, -10); ctx.stroke();
-    } else {
-      ctx.beginPath(); ctx.arc(-3, -12, 1.5, 0, Math.PI * 2); ctx.fill(); // Left eye
-      ctx.beginPath(); ctx.arc(3, -12, 1.5, 0, Math.PI * 2); ctx.fill(); // Right eye
-    }
+    ctx.beginPath(); ctx.arc(-3, -12, 1.5, 0, Math.PI * 2); ctx.fill(); // Left eye
+    ctx.beginPath(); ctx.arc(3, -12, 1.5, 0, Math.PI * 2); ctx.fill(); // Right eye
   } else if (facing === 'left') {
-    if (outfit === 'outfit_pajamas') {
-      ctx.beginPath(); ctx.moveTo(-6, -12); ctx.lineTo(-3, -10); ctx.stroke();
-    } else {
-      ctx.beginPath(); ctx.arc(-4, -12, 1.5, 0, Math.PI * 2); ctx.fill(); // Left eye
-    }
+    ctx.beginPath(); ctx.arc(-4, -12, 1.5, 0, Math.PI * 2); ctx.fill(); // Left eye
   } else if (facing === 'right') {
-    if (outfit === 'outfit_pajamas') {
-      ctx.beginPath(); ctx.moveTo(6, -12); ctx.lineTo(3, -10); ctx.stroke();
-    } else {
-      ctx.beginPath(); ctx.arc(4, -12, 1.5, 0, Math.PI * 2); ctx.fill(); // Right eye
+    ctx.beginPath(); ctx.arc(4, -12, 1.5, 0, Math.PI * 2); ctx.fill(); // Right eye
+  }
+
+  // Accessories
+  if (accessory === 'glasses') {
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    if (facing === 'down') {
+      ctx.strokeRect(-6, -14, 5, 4);
+      ctx.strokeRect(1, -14, 5, 4);
+      ctx.beginPath(); ctx.moveTo(-1, -12); ctx.lineTo(1, -12); ctx.stroke();
     }
+  } else if (accessory === 'hat') {
+    ctx.fillStyle = '#5d4037';
+    ctx.beginPath();
+    ctx.roundRect(-12, -22, 24, 4, 2);
+    ctx.fill();
+    ctx.fillRect(-8, -28, 16, 8);
+  } else if (accessory === 'scarf') {
+    ctx.fillStyle = '#c62828';
+    ctx.beginPath();
+    ctx.roundRect(-8, -6, 16, 4, 2);
+    ctx.fill();
+    ctx.fillRect(4, -6, 4, 10);
   }
 
   // Legs

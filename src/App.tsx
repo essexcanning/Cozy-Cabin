@@ -10,10 +10,11 @@ import { WorldSetup } from './components/WorldSetup';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, getDocFromCache } from 'firebase/firestore';
+import { handleFirestoreError, OperationType } from './utils/errorHandling';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [worldId, setWorldId] = useState<string | null>(null);
+  const [worldId, setWorldId] = useState<string | null>(localStorage.getItem('cozy_cabin_world_id'));
   const [loading, setLoading] = useState(true);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
 
@@ -22,27 +23,45 @@ export default function App() {
       setUser(currentUser);
       if (currentUser) {
         // Check if user already has a world
-        try {
-          let userDoc;
+        const fetchWorld = async (retryCount = 0) => {
           try {
-            // Try cache first to save quota
-            userDoc = await getDocFromCache(doc(db, 'users', currentUser.uid));
-          } catch (e) {
-            // Fallback to server if not in cache
-            userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+            let userDoc;
+            const userDocRef = doc(db, 'users', currentUser.uid);
+            try {
+              // Try cache first to save quota
+              userDoc = await getDocFromCache(userDocRef);
+            } catch (e) {
+              // Fallback to server if not in cache
+              userDoc = await getDoc(userDocRef);
+            }
+            
+            if (userDoc.exists() && userDoc.data().worldId) {
+              const id = userDoc.data().worldId;
+              setWorldId(id);
+              localStorage.setItem('cozy_cabin_world_id', id);
+            }
+          } catch (error: any) {
+            console.error("Error fetching user world:", error);
+            if (error.message?.includes('Quota exceeded')) {
+              if (retryCount < 2) {
+                // Wait 2 seconds and try again
+                setTimeout(() => fetchWorld(retryCount + 1), 2000);
+                return;
+              } else if (!localStorage.getItem('cozy_cabin_world_id')) {
+                setQuotaExceeded(true);
+              }
+            }
+            
+            if (error.code === 'permission-denied' || error.message?.includes('insufficient permissions')) {
+              handleFirestoreError(error, OperationType.GET, `users/${currentUser.uid}`);
+            }
           }
-          
-          if (userDoc.exists() && userDoc.data().worldId) {
-            setWorldId(userDoc.data().worldId);
-          }
-        } catch (error: any) {
-          console.error("Error fetching user world:", error);
-          if (error.message?.includes('Quota exceeded')) {
-            setQuotaExceeded(true);
-          }
-        }
+        };
+        
+        fetchWorld();
       } else {
         setWorldId(null);
+        localStorage.removeItem('cozy_cabin_world_id');
       }
       setLoading(false);
     });

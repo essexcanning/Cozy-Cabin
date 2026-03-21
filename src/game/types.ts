@@ -40,6 +40,13 @@ export interface GameState {
     animFrame: number;
     color?: string;
     outfit?: string;
+    gender?: 'male' | 'female' | 'non-binary';
+    hairStyle?: string;
+    hairColor?: string;
+    skinColor?: string;
+    eyeColor?: string;
+    accessory?: string;
+    facialFeature?: string;
     lastFootstep?: number;
   };
   otherPlayers: {
@@ -54,6 +61,13 @@ export interface GameState {
       animFrame: number;
       color?: string;
       outfit?: string;
+      gender?: 'male' | 'female' | 'non-binary';
+      hairStyle?: string;
+      hairColor?: string;
+      skinColor?: string;
+      eyeColor?: string;
+      accessory?: string;
+      facialFeature?: string;
     }
   };
   keys: { [key: string]: boolean };
@@ -146,6 +160,15 @@ export const createInitialState = (): GameState => {
       facing: 'down',
       isMoving: false,
       animFrame: 0,
+      gender: 'non-binary',
+      hairStyle: 'short',
+      hairColor: '#5d4037',
+      skinColor: '#ffe0b2',
+      eyeColor: '#3e2723',
+      accessory: 'none',
+      facialFeature: 'none',
+      outfit: 'default',
+      color: '#ffb74d'
     },
     otherPlayers: {},
     keys: {},

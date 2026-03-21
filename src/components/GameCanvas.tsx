@@ -6,8 +6,11 @@ import { playSound, toggleBGM } from '../game/audio';
 import { auth, db } from '../firebase';
 import { doc, setDoc, getDoc, onSnapshot, collection, serverTimestamp, updateDoc, increment } from 'firebase/firestore';
 import { GoogleGenAI } from '@google/genai';
+import { CharacterCustomization } from './CharacterCustomization';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+import { handleFirestoreError, OperationType } from '../utils/errorHandling';
 
 export default function GameCanvas({ worldId }: { worldId: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -15,6 +18,7 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
   const [isChestOpen, setIsChestOpen] = useState(false);
   const [isTasksOpen, setIsTasksOpen] = useState(false);
   const [isCoachOpen, setIsCoachOpen] = useState(false);
+  const [isCustomizeOpen, setIsCustomizeOpen] = useState(false);
   const [coachMessage, setCoachMessage] = useState<string>("Hello! I'm your Cozy Coach. Let me look at your tasks...");
   const [isCoachLoading, setIsCoachLoading] = useState(false);
   const [particles, setParticles] = useState<{x: number, y: number, id: number}[]>([]);
@@ -33,10 +37,12 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
   });
 
   const [inviteCode, setInviteCode] = useState<string | null>(null);
-  const requestRef = useRef<number>();
-  const lastTimeRef = useRef<number>();
+  const requestRef = useRef<number>(undefined);
+  const lastTimeRef = useRef<number>(undefined);
   const lastSyncRef = useRef<number>(0);
   const lastSyncDataRef = useRef<string>('');
+  const woodBufferRef = useRef<number>(0);
+  const lastWoodSyncRef = useRef<number>(0);
 
   useEffect(() => {
     if (!worldId) return;
@@ -48,7 +54,11 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
         setInviteCode(docSnap.data().inviteCode);
       }
     }).catch(err => {
-      if (err.message?.includes('Quota exceeded')) setQuotaExceeded(true);
+      if (err.message?.includes('Quota exceeded')) {
+        setQuotaExceeded(true);
+      } else if (err.code === 'permission-denied' || err.message?.includes('insufficient permissions')) {
+        handleFirestoreError(err, OperationType.GET, `worlds/${worldId}`);
+      }
     });
 
     // Real-time sync for shared state
@@ -106,17 +116,43 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
               dateNight: null
             }
           }).catch(err => {
-            if (err.message?.includes('Quota exceeded')) setQuotaExceeded(true);
+            if (err.message?.includes('Quota exceeded')) {
+              setQuotaExceeded(true);
+            } else if (err.code === 'permission-denied' || err.message?.includes('insufficient permissions')) {
+              handleFirestoreError(err, OperationType.WRITE, `worlds/${worldId}`);
+            }
           });
         }
       }
     }, (err) => {
       if (err.message?.includes('Quota exceeded')) {
         setQuotaExceeded(true);
+      } else if (err.code === 'permission-denied' || err.message?.includes('insufficient permissions')) {
+        handleFirestoreError(err, OperationType.GET, `worlds/${worldId}`);
       } else {
         console.error("Shared state sync error:", err);
       }
     });
+
+    // Fetch user customization
+    if (auth.currentUser) {
+      getDoc(doc(db, 'users', auth.currentUser.uid)).then(userSnap => {
+        if (userSnap.exists()) {
+          const userData = userSnap.data();
+          gameState.player.gender = userData.gender || 'non-binary';
+          gameState.player.hairStyle = userData.hairStyle || 'short';
+          gameState.player.hairColor = userData.hairColor || '#5d4037';
+          gameState.player.skinColor = userData.skinColor || '#ffe0b2';
+          gameState.player.eyeColor = userData.eyeColor || '#3e2723';
+          gameState.player.accessory = userData.accessory || 'none';
+          gameState.player.facialFeature = userData.facialFeature || 'none';
+        }
+      }).catch(err => {
+        if (err.code === 'permission-denied' || err.message?.includes('insufficient permissions')) {
+          handleFirestoreError(err, OperationType.GET, `users/${auth.currentUser!.uid}`);
+        }
+      });
+    }
 
     return () => unsubscribe();
   }, [worldId, gameState]);
@@ -143,7 +179,14 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
             isMoving: data.isMoving || false,
             animFrame: data.animFrame || 0,
             color: data.color || '#1565c0',
-            outfit: data.outfit || 'default'
+            outfit: data.outfit || 'default',
+            gender: data.gender || 'non-binary',
+            hairStyle: data.hairStyle || 'short',
+            hairColor: data.hairColor || '#5d4037',
+            skinColor: data.skinColor || '#ffe0b2',
+            eyeColor: data.eyeColor || '#3e2723',
+            accessory: data.accessory || 'none',
+            facialFeature: data.facialFeature || 'none'
           };
         }
         if (change.type === 'removed') {
@@ -153,6 +196,8 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
     }, (error) => {
       if (error.message?.includes('Quota exceeded')) {
         setQuotaExceeded(true);
+      } else if (error.code === 'permission-denied' || error.message?.includes('insufficient permissions')) {
+        handleFirestoreError(error, OperationType.LIST, `worlds/${worldId}/players`);
       }
       console.error('Firestore Error: ', JSON.stringify({
         error: error.message,
@@ -186,11 +231,24 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
           playSound('interact');
           const target = gameState.interactionTarget;
           if (target.type === 'tree') {
-            updateDoc(doc(db, 'worlds', worldId), { 
-              'shared.wood': increment(1) 
-            }).catch(err => {
-              if (err.message?.includes('Quota exceeded')) setQuotaExceeded(true);
-            });
+            // Local update for responsiveness
+            setSharedState(prev => ({ ...prev, wood: prev.wood + 1 }));
+            gameState.shared.wood += 1;
+            woodBufferRef.current += 1;
+
+            // Throttled sync to Firestore (every 5 seconds or when buffer is large)
+            const now = Date.now();
+            if (now - lastWoodSyncRef.current > 5000 || woodBufferRef.current >= 5) {
+              const amount = woodBufferRef.current;
+              woodBufferRef.current = 0;
+              lastWoodSyncRef.current = now;
+              
+              updateDoc(doc(db, 'worlds', worldId), { 
+                'shared.wood': increment(amount) 
+              }).catch(err => {
+                if (err.message?.includes('Quota exceeded')) setQuotaExceeded(true);
+              });
+            }
           } else if (target.type === 'chest') {
             setIsChestOpen(true);
             gameState.ui.chestOpen = true;
@@ -225,8 +283,15 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      
+      // Final sync of wood buffer if needed
+      if (woodBufferRef.current > 0 && worldId) {
+        updateDoc(doc(db, 'worlds', worldId), { 
+          'shared.wood': increment(woodBufferRef.current) 
+        }).catch(() => {});
+      }
     };
-  }, [gameState, sharedState]);
+  }, [worldId, gameState]);
 
   const startDateNight = async () => {
     setIsCoachLoading(true);
@@ -271,19 +336,26 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
         // Fixed time step for logic
         updateGame(gameState, deltaTime);
         
-        // Sync to Firebase (throttle to ~500ms and only if data changed significantly)
-        const syncInterval = gameState.player.isMoving ? 500 : 2000;
+        // Sync to Firebase (throttle to ~1500ms when moving, ~5000ms when idle)
+        const syncInterval = gameState.player.isMoving ? 1500 : 5000;
         if (auth.currentUser && worldId && time - lastSyncRef.current > syncInterval) {
           const syncData = {
             uid: auth.currentUser.uid,
-            x: Math.round(gameState.player.x / 4) * 4, // Only sync if moved at least 4 pixels
-            y: Math.round(gameState.player.y / 4) * 4,
+            x: Math.round(gameState.player.x / 10) * 10, // Only sync if moved at least 10 pixels
+            y: Math.round(gameState.player.y / 10) * 10,
             scene: gameState.scene,
             facing: gameState.player.facing,
             isMoving: gameState.player.isMoving,
             animFrame: Math.floor(gameState.player.animFrame),
             color: gameState.player.color || '#ffb74d',
-            outfit: gameState.player.outfit || 'default'
+            outfit: gameState.player.outfit || 'default',
+            gender: gameState.player.gender || 'non-binary',
+            hairStyle: gameState.player.hairStyle || 'short',
+            hairColor: gameState.player.hairColor || '#5d4037',
+            skinColor: gameState.player.skinColor || '#ffe0b2',
+            eyeColor: gameState.player.eyeColor || '#3e2723',
+            accessory: gameState.player.accessory || 'none',
+            facialFeature: gameState.player.facialFeature || 'none'
           };
 
           const syncDataStr = JSON.stringify(syncData);
@@ -449,11 +521,8 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
           </button>
           <button 
             onClick={() => {
-              const newColor = prompt("Enter a color for your character (e.g., #ff0000, blue, #4caf50):", gameState.player.color || '#ffb74d');
-              if (newColor) {
-                gameState.player.color = newColor;
-                setDoc(doc(db, 'worlds', worldId, 'players', auth.currentUser!.uid), { color: newColor }, { merge: true });
-              }
+              setIsCustomizeOpen(true);
+              gameState.ui.coachOpen = true; // Reusing this to block input
             }}
             className="bg-white/10 hover:bg-white/20 p-2 rounded-lg transition-colors flex-1 text-center"
             title="Customize Character"
@@ -681,6 +750,46 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
             >
               Close (Esc)
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Character Customization Overlay */}
+      {isCustomizeOpen && (
+        <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-[100] backdrop-blur-md p-4">
+          <div className="relative max-w-4xl w-full">
+            <button 
+              className="absolute -top-12 right-0 text-white hover:text-stone-300 font-bold flex items-center gap-2"
+              onClick={() => {
+                setIsCustomizeOpen(false);
+                gameState.ui.coachOpen = false;
+              }}
+            >
+              Cancel
+            </button>
+            <CharacterCustomization 
+              initialData={{
+                gender: gameState.player.gender,
+                hairStyle: gameState.player.hairStyle,
+                hairColor: gameState.player.hairColor,
+                skinColor: gameState.player.skinColor,
+                eyeColor: gameState.player.eyeColor,
+                accessory: gameState.player.accessory,
+                facialFeature: gameState.player.facialFeature
+              }}
+              onComplete={async (customization) => {
+                // Update local state
+                Object.assign(gameState.player, customization);
+                
+                // Update Firestore User profile
+                if (auth.currentUser) {
+                  await setDoc(doc(db, 'users', auth.currentUser.uid), customization, { merge: true });
+                }
+                
+                setIsCustomizeOpen(false);
+                gameState.ui.coachOpen = false;
+              }}
+            />
           </div>
         </div>
       )}

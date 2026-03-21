@@ -26,11 +26,18 @@ service cloud.firestore {
     
     // Domain Validators
     function isValidUser() {
-      return hasOnlyAllowedFields(['uid', 'displayName', 'email', 'worldId']) &&
+      return hasOnlyAllowedFields(['uid', 'displayName', 'email', 'worldId', 'gender', 'hairStyle', 'hairColor', 'skinColor', 'eyeColor', 'accessory', 'facialFeature']) &&
              request.resource.data.uid is string &&
              (!('email' in request.resource.data) || request.resource.data.email == null || request.resource.data.email is string) &&
              (!('displayName' in request.resource.data) || request.resource.data.displayName == null || request.resource.data.displayName is string) &&
-             (!('worldId' in request.resource.data) || request.resource.data.worldId is string);
+             (!('worldId' in request.resource.data) || request.resource.data.worldId is string) &&
+             (!('gender' in request.resource.data) || request.resource.data.gender is string) &&
+             (!('hairStyle' in request.resource.data) || request.resource.data.hairStyle is string) &&
+             (!('hairColor' in request.resource.data) || request.resource.data.hairColor is string) &&
+             (!('skinColor' in request.resource.data) || request.resource.data.skinColor is string) &&
+             (!('eyeColor' in request.resource.data) || request.resource.data.eyeColor is string) &&
+             (!('accessory' in request.resource.data) || request.resource.data.accessory is string) &&
+             (!('facialFeature' in request.resource.data) || request.resource.data.facialFeature is string);
     }
     
     function isValidWorld() {
@@ -44,7 +51,7 @@ service cloud.firestore {
     }
     
     function isValidPlayerState() {
-      return hasOnlyAllowedFields(['uid', 'x', 'y', 'scene', 'facing', 'isMoving', 'animFrame', 'lastUpdated']) &&
+      return hasOnlyAllowedFields(['uid', 'x', 'y', 'scene', 'facing', 'isMoving', 'animFrame', 'color', 'outfit', 'gender', 'hairStyle', 'hairColor', 'skinColor', 'eyeColor', 'accessory', 'facialFeature', 'lastUpdated']) &&
              request.resource.data.uid is string &&
              request.resource.data.x is number &&
              request.resource.data.y is number &&
@@ -52,6 +59,15 @@ service cloud.firestore {
              (!('facing' in request.resource.data) || request.resource.data.facing is string) &&
              (!('isMoving' in request.resource.data) || request.resource.data.isMoving is bool) &&
              (!('animFrame' in request.resource.data) || request.resource.data.animFrame is number) &&
+             (!('color' in request.resource.data) || request.resource.data.color is string) &&
+             (!('outfit' in request.resource.data) || request.resource.data.outfit is string) &&
+             (!('gender' in request.resource.data) || request.resource.data.gender is string) &&
+             (!('hairStyle' in request.resource.data) || request.resource.data.hairStyle is string) &&
+             (!('hairColor' in request.resource.data) || request.resource.data.hairColor is string) &&
+             (!('skinColor' in request.resource.data) || request.resource.data.skinColor is string) &&
+             (!('eyeColor' in request.resource.data) || request.resource.data.eyeColor is string) &&
+             (!('accessory' in request.resource.data) || request.resource.data.accessory is string) &&
+             (!('facialFeature' in request.resource.data) || request.resource.data.facialFeature is string) &&
              (!('lastUpdated' in request.resource.data) || request.resource.data.lastUpdated is timestamp);
     }
 

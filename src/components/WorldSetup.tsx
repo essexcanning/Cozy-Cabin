@@ -2,12 +2,19 @@ import React, { useState } from 'react';
 import { auth, db } from '../firebase';
 import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { Home, Users, LogOut } from 'lucide-react';
+import { CharacterCustomization } from './CharacterCustomization';
 
 interface WorldSetupProps {
   onWorldJoined: (worldId: string) => void;
 }
 
+type SetupStep = 'choose' | 'customize';
+
+import { handleFirestoreError, OperationType } from '../utils/errorHandling';
+
 export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
+  const [step, setStep] = useState<SetupStep>('choose');
+  const [pendingWorldId, setPendingWorldId] = useState<string | null>(null);
   const [inviteCode, setInviteCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -21,8 +28,8 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
     setLoading(true);
     setError('');
     
+    const newWorldId = crypto.randomUUID();
     try {
-      const newWorldId = crypto.randomUUID();
       const code = generateInviteCode();
       
       // Create world
@@ -43,19 +50,14 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
         }
       });
 
-      // Update user profile
-      await setDoc(doc(db, 'users', auth.currentUser.uid), {
-        uid: auth.currentUser.uid,
-        displayName: auth.currentUser.displayName || 'Player',
-        email: auth.currentUser.email,
-        worldId: newWorldId
-      }, { merge: true });
-
-      onWorldJoined(newWorldId);
+      setPendingWorldId(newWorldId);
+      setStep('customize');
     } catch (err: any) {
       console.error(err);
       if (err.message?.includes('Quota exceeded')) {
         setError('Daily database limit reached. Please try again tomorrow.');
+      } else if (err.code === 'permission-denied' || err.message?.includes('insufficient permissions')) {
+        handleFirestoreError(err, OperationType.WRITE, `worlds/${newWorldId}`);
       } else {
         setError('Failed to create world.');
       }
@@ -74,7 +76,15 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
       const code = inviteCode.trim().toUpperCase();
       const worldsRef = collection(db, 'worlds');
       const q = query(worldsRef, where('inviteCode', '==', code));
-      const querySnapshot = await getDocs(q);
+      let querySnapshot;
+      try {
+        querySnapshot = await getDocs(q);
+      } catch (err: any) {
+        if (err.code === 'permission-denied' || err.message?.includes('insufficient permissions')) {
+          handleFirestoreError(err, OperationType.LIST, 'worlds');
+        }
+        throw err;
+      }
 
       if (querySnapshot.empty) {
         setError('Invalid invite code.');
@@ -94,20 +104,20 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
 
       // Add partner if not already set
       if (!worldData.partnerId && worldData.ownerId !== auth.currentUser.uid) {
-        await setDoc(doc(db, 'worlds', worldId), {
-          partnerId: auth.currentUser.uid
-        }, { merge: true });
+        try {
+          await setDoc(doc(db, 'worlds', worldId), {
+            partnerId: auth.currentUser.uid
+          }, { merge: true });
+        } catch (err: any) {
+          if (err.code === 'permission-denied' || err.message?.includes('insufficient permissions')) {
+            handleFirestoreError(err, OperationType.WRITE, `worlds/${worldId}`);
+          }
+          throw err;
+        }
       }
 
-      // Update user profile
-      await setDoc(doc(db, 'users', auth.currentUser.uid), {
-        uid: auth.currentUser.uid,
-        displayName: auth.currentUser.displayName || 'Player',
-        email: auth.currentUser.email,
-        worldId: worldId
-      }, { merge: true });
-
-      onWorldJoined(worldId);
+      setPendingWorldId(worldId);
+      setStep('customize');
     } catch (err: any) {
       console.error(err);
       if (err.message?.includes('Quota exceeded')) {
@@ -119,6 +129,40 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
       setLoading(false);
     }
   };
+
+  const handleCustomizationComplete = async (customization: any) => {
+    if (!auth.currentUser || !pendingWorldId) return;
+    setLoading(true);
+    
+    try {
+      // Update user profile with worldId AND customization
+      await setDoc(doc(db, 'users', auth.currentUser.uid), {
+        uid: auth.currentUser.uid,
+        displayName: auth.currentUser.displayName || 'Player',
+        email: auth.currentUser.email,
+        worldId: pendingWorldId,
+        ...customization
+      }, { merge: true });
+
+      onWorldJoined(pendingWorldId);
+    } catch (err: any) {
+      console.error(err);
+      if (err.code === 'permission-denied' || err.message?.includes('insufficient permissions')) {
+        handleFirestoreError(err, OperationType.WRITE, `users/${auth.currentUser.uid}`);
+      }
+      setError('Failed to save character customization.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (step === 'customize') {
+    return (
+      <div className="min-h-screen bg-stone-950 flex items-center justify-center p-4">
+        <CharacterCustomization onComplete={handleCustomizationComplete} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-stone-900 flex items-center justify-center p-4">
@@ -198,3 +242,4 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
     </div>
   );
 };
+
