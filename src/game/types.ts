@@ -115,7 +115,6 @@ export interface GameState {
     purchasedItems: string[];
     dateNight: { active: boolean; prompt: string } | null;
     lastInteractionAt: number;
-    placedItems: PlacedItem[];
   };
   ui: {
     chestOpen: boolean;
@@ -213,8 +212,7 @@ export const createInitialState = (): GameState => {
       ],
       purchasedItems: [],
       dateNight: null,
-      lastInteractionAt: Date.now(),
-      placedItems: []
+      lastInteractionAt: Date.now()
     },
     spirit: {
       id: 'spirit',

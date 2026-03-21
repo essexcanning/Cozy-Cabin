@@ -49,24 +49,24 @@
               "items": { "type": "string" }
             },
             "dateNight": { "type": "string", "nullable": true },
-            "lastInteractionAt": { "type": "number" },
-            "placedItems": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "id": { "type": "string" },
-                  "type": { "type": "string" },
-                  "x": { "type": "number" },
-                  "y": { "type": "number" },
-                  "data": { "type": "string" }
-                }
-              }
-            }
+            "lastInteractionAt": { "type": "number" }
           }
         }
       },
       "required": ["inviteCode", "ownerId", "createdAt"]
+    },
+    "Painting": {
+      "title": "Painting",
+      "description": "An AI-generated painting.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "data": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "x", "y", "data"]
     },
     "PlayerState": {
       "title": "PlayerState",
@@ -106,6 +106,10 @@
     "/worlds/{worldId}/players/{playerId}": {
       "schema": { "$ref": "#/entities/PlayerState" },
       "description": "Real-time player states in a world."
+    },
+    "/worlds/{worldId}/paintings/{paintingId}": {
+      "schema": { "$ref": "#/entities/Painting" },
+      "description": "AI-generated paintings in a world."
     }
   }
 }

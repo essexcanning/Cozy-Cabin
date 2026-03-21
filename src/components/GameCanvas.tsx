@@ -37,7 +37,6 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       { id: 't3', text: 'Complete a joint check-in', completed: false }
     ],
     purchasedItems: [] as string[],
-    placedItems: [] as any[],
     lastInteractionAt: Date.now(),
     dateNight: null as { active: boolean, prompt: string } | null
   });
@@ -72,59 +71,51 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       if (docSnap.exists()) {
         const data = docSnap.data();
         if (data.shared) {
-          setSharedState(data.shared);
-          gameState.shared = data.shared;
-          gameState.ui.dateNightOpen = !!data.shared.dateNight?.active;
+          const shared = {
+            ...data.shared,
+            purchasedItems: data.shared.purchasedItems || [],
+            tasks: data.shared.tasks || []
+          };
+          setSharedState(shared);
+          gameState.shared = shared;
+          gameState.ui.dateNightOpen = !!shared.dateNight?.active;
           
           // Update purchased items in the scene
           const existingCat = gameState.objects.inside.find(obj => obj.type === 'cat');
           
           const newInsideObjects = gameState.objects.inside.filter(obj => 
-            !['cat', 'luxury_rug', 'high_end_lamp', 'gramophone', 'potted_plant', 'wall_art'].includes(obj.type)
+            !['cat', 'luxury_rug', 'high_end_lamp', 'gramophone', 'potted_plant', 'wall_art', 'painting'].includes(obj.type)
           );
           
-          if (data.shared.purchasedItems?.includes('cat')) {
+          if (shared.purchasedItems?.includes('cat')) {
             if (existingCat) {
               newInsideObjects.push(existingCat);
             } else {
               newInsideObjects.push({ id: 'cat', x: 40, y: -40, width: 20, height: 20, type: 'cat', solid: true, interactable: true });
             }
           }
-          if (data.shared.purchasedItems?.includes('luxury_rug')) {
+          if (shared.purchasedItems?.includes('luxury_rug')) {
             newInsideObjects.push({ id: 'luxury_rug', x: 0, y: 0, width: 120, height: 80, type: 'luxury_rug', solid: false });
           }
-          if (data.shared.purchasedItems?.includes('high_end_lamp')) {
+          if (shared.purchasedItems?.includes('high_end_lamp')) {
             newInsideObjects.push({ id: 'high_end_lamp', x: -80, y: -20, width: 20, height: 40, type: 'high_end_lamp', solid: true });
           }
-          if (data.shared.purchasedItems?.includes('gramophone')) {
+          if (shared.purchasedItems?.includes('gramophone')) {
             newInsideObjects.push({ id: 'gramophone', x: 80, y: -20, width: 20, height: 30, type: 'gramophone', solid: true });
           }
-          if (data.shared.purchasedItems?.includes('potted_plant')) {
+          if (shared.purchasedItems?.includes('potted_plant')) {
             newInsideObjects.push({ id: 'potted_plant', x: -80, y: 80, width: 20, height: 40, type: 'potted_plant', solid: true });
           }
-          if (data.shared.purchasedItems?.includes('wall_art')) {
+          if (shared.purchasedItems?.includes('wall_art')) {
             newInsideObjects.push({ id: 'wall_art', x: 0, y: -100, width: 40, height: 30, type: 'wall_art', solid: false });
           }
-          if (data.shared.purchasedItems?.includes('magic_easel')) {
+          if (shared.purchasedItems?.includes('magic_easel')) {
             newInsideObjects.push({ id: 'magic_easel', x: 60, y: 40, width: 30, height: 40, type: 'magic_easel', solid: true, interactable: true });
           }
 
-          // Add placed items (paintings)
-          if (data.shared.placedItems) {
-            data.shared.placedItems.forEach((item: any) => {
-              newInsideObjects.push({ 
-                id: item.id, 
-                x: item.x, 
-                y: item.y, 
-                width: 40, 
-                height: 30, 
-                type: item.type, 
-                solid: false, 
-                interactable: true,
-                onInteract: item.data // Store image data here
-              });
-            });
-          }
+          // Re-add paintings (they are handled by a separate listener now)
+          const paintings = gameState.objects.inside.filter(obj => obj.type === 'painting');
+          newInsideObjects.push(...paintings);
           
           gameState.objects.inside = newInsideObjects;
         } else {
@@ -139,7 +130,6 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
                 { id: 't3', text: 'Complete a joint check-in', completed: false }
               ],
               purchasedItems: [],
-              placedItems: [],
               lastInteractionAt: Date.now(),
               dateNight: null
             }
@@ -159,6 +149,37 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
         handleFirestoreError(err, OperationType.GET, `worlds/${worldId}`);
       } else {
         console.error("Shared state sync error:", err);
+      }
+    });
+
+    // Real-time sync for paintings
+    const paintingsRef = collection(db, 'worlds', worldId, 'paintings');
+    const unsubscribePaintings = onSnapshot(paintingsRef, (snapshot) => {
+      const paintings: any[] = [];
+      snapshot.forEach(doc => {
+        paintings.push(doc.data());
+      });
+
+      // Update inside objects with new paintings
+      const currentInside = [...gameState.objects.inside];
+      const nonPaintings = currentInside.filter(obj => obj.type !== 'painting');
+      
+      const newPaintings = paintings.map(p => ({
+        id: p.id,
+        x: p.x,
+        y: p.y,
+        width: 40,
+        height: 30,
+        type: 'painting' as const,
+        solid: false,
+        interactable: true,
+        onInteract: p.data
+      }));
+
+      gameState.objects.inside = [...nonPaintings, ...newPaintings];
+    }, (err) => {
+      if (err.code === 'permission-denied' || err.message?.includes('insufficient permissions')) {
+        handleFirestoreError(err, OperationType.GET, `worlds/${worldId}/paintings`);
       }
     });
 
@@ -182,7 +203,10 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       });
     }
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      unsubscribePaintings();
+    };
   }, [worldId, gameState]);
 
   useEffect(() => {
@@ -480,24 +504,46 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       });
 
       let base64Data = '';
+      let mimeType = 'image/jpeg';
       for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) {
           base64Data = part.inlineData.data;
+          mimeType = part.inlineData.mimeType || 'image/jpeg';
           break;
         }
       }
 
       if (base64Data) {
-        const newPainting = {
-          id: `painting_${Date.now()}`,
-          type: 'painting',
+        // Compress the image client-side to avoid Firestore 1MB limit
+        const compressedData = await new Promise<string>((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 512;
+            const scaleSize = MAX_WIDTH / img.width;
+            canvas.width = MAX_WIDTH;
+            canvas.height = img.height * scaleSize;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              resolve(canvas.toDataURL('image/jpeg', 0.8).split(',')[1]);
+            } else {
+              resolve(base64Data); // Fallback if canvas fails
+            }
+          };
+          img.onerror = () => resolve(base64Data); // Fallback on error
+          img.src = `data:${mimeType};base64,${base64Data}`;
+        });
+
+        const paintingId = `painting_${Date.now()}`;
+        const paintingRef = doc(db, 'worlds', worldId, 'paintings', paintingId);
+        
+        await setDoc(paintingRef, {
+          id: paintingId,
           x: Math.random() * 200 - 100,
           y: -100, // Wall position
-          data: base64Data
-        };
-
-        await updateDoc(doc(db, 'worlds', worldId), {
-          'shared.placedItems': [...sharedState.placedItems, newPainting]
+          data: compressedData,
+          createdAt: serverTimestamp()
         });
         
         setIsEaselOpen(false);

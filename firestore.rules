@@ -71,6 +71,16 @@ service cloud.firestore {
              (!('lastUpdated' in request.resource.data) || request.resource.data.lastUpdated is timestamp);
     }
 
+    function isValidPainting() {
+      return hasOnlyAllowedFields(['id', 'x', 'y', 'data', 'createdAt']) &&
+             request.resource.data.id is string &&
+             request.resource.data.x is number &&
+             request.resource.data.y is number &&
+             request.resource.data.data is string &&
+             request.resource.data.data.size() < 1000000 && // Limit to 1MB
+             (!('createdAt' in request.resource.data) || request.resource.data.createdAt is timestamp);
+    }
+
     match /users/{userId} {
       allow read: if isOwner(userId);
       allow create: if isOwner(userId) && isValidUser() && uidUnchanged();
@@ -93,6 +103,18 @@ service cloud.firestore {
         // A player can only write their own state
         allow create, update: if isOwner(playerId);
         allow delete: if isOwner(playerId);
+      }
+
+      match /paintings/{paintingId} {
+        // Anyone in the world can read paintings
+        allow read: if isAuthenticated();
+        // Only owner or partner can create/delete paintings
+        allow create: if isAuthenticated() && isValidPainting() && 
+                      (get(/databases/$(database)/documents/worlds/$(worldId)).data.ownerId == request.auth.uid || 
+                       get(/databases/$(database)/documents/worlds/$(worldId)).data.partnerId == request.auth.uid);
+        allow delete: if isAuthenticated() && 
+                      (get(/databases/$(database)/documents/worlds/$(worldId)).data.ownerId == request.auth.uid || 
+                       get(/databases/$(database)/documents/worlds/$(worldId)).data.partnerId == request.auth.uid);
       }
     }
   }
