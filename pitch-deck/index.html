@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cozy Cabin — Hackathon Pitch Deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800;900&family=Playfair+Display:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0d0907;--surface:#1a1410;--surface2:#251e17;--surface3:#302620;
+    --amber:#f5a623;--amber-glow:#f5a62355;--orange:#e8723a;--warm:#c9553d;
+    --cream:#fdf4e3;--cream-dim:#c4b79a;--green:#6fcf97;--blue:#56ccf2;
+    --purple:#bb6bd9;--pink:#ff6b9d;
+  }
+  html,body{height:100%;width:100%;overflow:hidden;background:var(--bg);color:var(--cream);font-family:'Inter',sans-serif}
+
+  /* ─── Slide Container ─── */
+  .deck{position:relative;width:100%;height:100%}
+  .slide{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;padding:60px 80px;
+    opacity:0;pointer-events:none;transition:opacity .5s ease,transform .5s ease;
+    transform:translateY(20px);
+  }
+  .slide.active{opacity:1;pointer-events:auto;transform:translateY(0)}
+
+  /* ─── Typography ─── */
+  h1{font-family:'Playfair Display',serif;font-weight:900;font-size:3.6rem;line-height:1.15;margin-bottom:16px}
+  h2{font-family:'Playfair Display',serif;font-weight:800;font-size:2.6rem;line-height:1.2;margin-bottom:12px}
+  h3{font-weight:700;font-size:1.3rem;text-transform:uppercase;letter-spacing:.06em;color:var(--amber);margin-bottom:8px}
+  p,.body{font-size:1.15rem;line-height:1.65;color:var(--cream-dim);max-width:780px;text-align:center}
+  .tagline{font-size:1.5rem;font-weight:300;color:var(--amber);letter-spacing:.03em;margin-bottom:10px}
+  .big-emoji{font-size:4rem;margin-bottom:16px}
+  .highlight{color:var(--amber);font-weight:700}
+  .highlight-orange{color:var(--orange)}
+  .highlight-green{color:var(--green)}
+  .highlight-blue{color:var(--blue)}
+  .highlight-purple{color:var(--purple)}
+  .highlight-pink{color:var(--pink)}
+  small{font-size:.85rem;color:var(--cream-dim);opacity:.6}
+
+  /* ─── Layout helpers ─── */
+  .cols{display:flex;gap:48px;width:100%;max-width:1100px;margin-top:24px;align-items:flex-start}
+  .col{flex:1;text-align:left}
+  .col h3{text-align:left}
+  .col p,.col li{text-align:left}
+  .col ul{list-style:none;padding:0}
+  .col li{position:relative;padding-left:24px;margin-bottom:10px;font-size:1.05rem;color:var(--cream-dim);line-height:1.5}
+  .col li::before{content:'›';position:absolute;left:0;color:var(--amber);font-weight:700;font-size:1.2rem}
+
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:24px;width:100%;max-width:1100px;margin-top:28px}
+  .card{
+    background:var(--surface2);border:1px solid #3a2e24;border-radius:16px;
+    padding:28px 22px;text-align:center;transition:transform .25s ease,box-shadow .25s ease;
+  }
+  .card:hover{transform:translateY(-4px);box-shadow:0 8px 32px var(--amber-glow)}
+  .card .icon{font-size:2.4rem;margin-bottom:10px}
+  .card h4{font-size:1.05rem;font-weight:700;color:var(--cream);margin-bottom:6px}
+  .card p{font-size:.9rem;color:var(--cream-dim);text-align:center;line-height:1.45}
+
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;width:100%;max-width:1100px;margin-top:28px}
+
+  /* ─── Flow / Pipeline ─── */
+  .pipeline{display:flex;align-items:center;gap:0;margin-top:32px}
+  .pipe-step{
+    background:var(--surface2);border:1px solid #3a2e24;border-radius:14px;
+    padding:20px 28px;text-align:center;flex:1;
+  }
+  .pipe-step .icon{font-size:2rem;margin-bottom:6px}
+  .pipe-step h4{font-size:1rem;font-weight:700;margin-bottom:4px}
+  .pipe-step p{font-size:.82rem;color:var(--cream-dim);text-align:center}
+  .pipe-arrow{font-size:1.6rem;color:var(--amber);padding:0 6px;flex-shrink:0}
+
+  /* ─── Hero image ─── */
+  .hero-img{width:220px;height:220px;border-radius:24px;object-fit:cover;box-shadow:0 0 60px var(--amber-glow);margin-bottom:24px;border:3px solid var(--amber)}
+
+  /* ─── Demo placeholder ─── */
+  .demo-box{
+    width:780px;height:420px;border-radius:20px;background:var(--surface);
+    border:2px dashed var(--amber);display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:12px;margin-top:20px;
+    cursor:pointer;transition:background .3s ease;
+  }
+  .demo-box:hover{background:var(--surface2)}
+  .demo-box .play{font-size:4rem;color:var(--amber)}
+  .demo-box p{color:var(--cream-dim);font-size:1rem}
+
+  /* ─── Arch diagram ─── */
+  .arch{
+    display:flex;flex-direction:column;align-items:center;gap:16px;
+    margin-top:24px;width:100%;max-width:900px;
+  }
+  .arch-row{display:flex;gap:16px;width:100%;justify-content:center}
+  .arch-box{
+    background:var(--surface2);border:1px solid #3a2e24;border-radius:12px;
+    padding:14px 24px;text-align:center;font-size:.95rem;font-weight:600;
+    flex:1;max-width:220px;
+  }
+  .arch-box.accent{border-color:var(--amber);color:var(--amber)}
+  .arch-connector{width:2px;height:16px;background:var(--amber);border-radius:2px}
+
+  /* ─── Slide counter ─── */
+  .counter{
+    position:fixed;bottom:24px;right:32px;font-size:.85rem;
+    color:var(--cream-dim);opacity:.5;z-index:100;font-variant-numeric:tabular-nums;
+  }
+
+  /* ─── Nav dots ─── */
+  .nav-dots{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+    display:flex;gap:8px;z-index:100;
+  }
+  .nav-dots .dot{
+    width:8px;height:8px;border-radius:50%;background:var(--surface3);
+    transition:background .3s ease,transform .3s ease;cursor:pointer;
+  }
+  .nav-dots .dot.active{background:var(--amber);transform:scale(1.3)}
+
+  /* ─── Keyboard hint ─── */
+  .key-hint{
+    position:fixed;bottom:24px;left:32px;font-size:.75rem;
+    color:var(--cream-dim);opacity:.35;z-index:100;
+  }
+
+  /* ─── Ambient glow ─── */
+  .glow{
+    position:fixed;width:600px;height:600px;border-radius:50%;
+    background:radial-gradient(circle,var(--amber-glow) 0%,transparent 70%);
+    pointer-events:none;z-index:0;opacity:.35;
+  }
+  .glow.top-right{top:-200px;right:-200px}
+  .glow.bottom-left{bottom:-250px;left:-250px;opacity:.2}
+
+  /* ─── Animate-in children ─── */
+  .slide.active .fade-up{animation:fadeUp .6s ease both}
+  .slide.active .fade-up:nth-child(2){animation-delay:.1s}
+  .slide.active .fade-up:nth-child(3){animation-delay:.2s}
+  .slide.active .fade-up:nth-child(4){animation-delay:.25s}
+  .slide.active .fade-up:nth-child(5){animation-delay:.3s}
+  .slide.active .fade-up:nth-child(6){animation-delay:.35s}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+
+  /* ─── "Wins" pillars ─── */
+  .pillar-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px;width:100%;max-width:900px;margin-top:24px}
+  .pillar{
+    background:var(--surface2);border:1px solid #3a2e24;border-radius:14px;
+    padding:24px;text-align:left;
+  }
+  .pillar h4{font-size:1.1rem;font-weight:700;color:var(--cream);margin-bottom:6px}
+  .pillar h4 span{margin-right:8px}
+  .pillar p{font-size:.92rem;color:var(--cream-dim);line-height:1.5}
+
+  /* ─── Thank you links ─── */
+  .link-row{display:flex;gap:24px;margin-top:24px}
+  .link-btn{
+    display:inline-flex;align-items:center;gap:8px;padding:14px 28px;
+    border-radius:12px;background:var(--surface2);border:1px solid #3a2e24;
+    color:var(--cream);text-decoration:none;font-weight:600;font-size:1rem;
+    transition:border-color .3s ease,box-shadow .3s ease;
+  }
+  .link-btn:hover{border-color:var(--amber);box-shadow:0 4px 20px var(--amber-glow)}
+
+  /* ─── Bear sense/think/act ─── */
+  .bear-flow{display:flex;gap:0;align-items:center;margin-top:28px;width:100%;max-width:900px;justify-content:center}
+  .bear-step{
+    background:var(--surface2);border:1px solid #3a2e24;border-radius:16px;
+    padding:24px 28px;text-align:center;flex:1;max-width:260px;
+  }
+  .bear-step .icon{font-size:2.4rem;margin-bottom:8px}
+  .bear-step h4{font-size:1.05rem;font-weight:700;margin-bottom:4px}
+  .bear-step p{font-size:.88rem;color:var(--cream-dim);line-height:1.4;text-align:center}
+  .bear-arrow{font-size:1.8rem;color:var(--amber);padding:0 10px;flex-shrink:0}
+
+  /* ─── Luffa section ─── */
+  .luffa-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;width:100%;max-width:1000px;margin-top:24px}
+</style>
+</head>
+<body>
+
+<!-- Ambient glows -->
+<div class="glow top-right"></div>
+<div class="glow bottom-left"></div>
+
+<div class="deck" id="deck">
+
+  <!-- ======== SLIDE 1: TITLE ======== -->
+  <div class="slide active" data-slide="0">
+    <img src="cabin_hero.png" alt="Cozy Cabin" class="hero-img fade-up">
+    <h1 class="fade-up">Cozy Cabin</h1>
+    <p class="tagline fade-up">Orchestrating Human Connection through Pure AI & Onchain Intelligence</p>
+    <p class="fade-up" style="margin-top:16px;opacity:.55;font-size:.95rem">Encode London Hackathon 2025 · Stephen Canning</p>
+  </div>
+
+  <!-- ======== SLIDE 2: THE PROBLEM ======== -->
+  <div class="slide" data-slide="1">
+    <div class="big-emoji fade-up">😩</div>
+    <h2 class="fade-up">Relationships Are Hard Work</h2>
+    <p class="fade-up" style="margin-top:12px">
+      Couples juggle chores, forget to communicate, and let the "logistics" of daily life crowd out real connection. Existing apps are <span class="highlight">to-do lists with a heart icon</span> — there's nothing that makes the mundane feel <em>meaningful</em>.
+    </p>
+  </div>
+
+  <!-- ======== SLIDE 3: THE SOLUTION ======== -->
+  <div class="slide" data-slide="2">
+    <div class="big-emoji fade-up">🏠</div>
+    <h2 class="fade-up">Enter Cozy Cabin</h2>
+    <p class="fade-up" style="margin-top:12px;max-width:820px">
+      A <span class="highlight">real-time cooperative multiplayer sanctuary</span> for couples. Complete Love Tasks, earn <span class="highlight-orange">Cozy Coins (£)</span> and <span class="highlight-purple">EDS</span>, and build your shared virtual home — preserving relationship milestones in a persistent digital world.
+    </p>
+    <div class="pipeline fade-up" style="margin-top:36px">
+      <div class="pipe-step"><div class="icon">✅</div><h4>Love Tasks</h4><p>Chores & check-ins</p></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step"><div class="icon">🪙</div><h4>Cozy Coins</h4><p>In-game currency</p></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step"><div class="icon">🛠️</div><h4>Build & Decorate</h4><p>Grow your cabin</p></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step"><div class="icon">⛓️</div><h4>Mint Onchain</h4><p>Proof of Connection</p></div>
+    </div>
+  </div>
+
+  <!-- ======== SLIDE 4: DEMO ======== -->
+  <div class="slide" data-slide="3">
+    <h3 class="fade-up">Live Demo</h3>
+    <h2 class="fade-up">See It In Action</h2>
+    <div class="demo-box fade-up">
+      <div class="play">▶</div>
+      <p>Drop your recorded demo video here</p>
+      <small>Tip: replace this slide with an embedded &lt;video&gt; tag or screen recording</small>
+    </div>
+  </div>
+
+  <!-- ======== SLIDE 5: HOW IT WORKS ======== -->
+  <div class="slide" data-slide="4">
+    <h3 class="fade-up">How It Works</h3>
+    <h2 class="fade-up">The Core Game Loop</h2>
+    <div class="cols fade-up" style="margin-top:28px">
+      <div class="col">
+        <h3>👫 For Couples</h3>
+        <ul>
+          <li>Receive personalised <strong>Love Tasks</strong> (chores, affirmations, surprises)</li>
+          <li>Complete tasks together to earn <span class="highlight-orange">Cozy Coins</span></li>
+          <li>Spend coins to <strong>build & decorate</strong> your cabin</li>
+          <li>Explore your shared space in real-time multiplayer</li>
+        </ul>
+      </div>
+      <div class="col">
+        <h3>🤖 The AI Bear</h3>
+        <ul>
+          <li>An <strong>autonomous NPC</strong> that lives in your cabin</li>
+          <li>Senses game state & relationship signals</li>
+          <li>Proactively walks over to offer <span class="highlight-blue">coaching & nudges</span></li>
+          <li>Pushes insights into your <span class="highlight-purple">Luffa chat thread</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======== SLIDE 6: VIBE CODING ======== -->
+  <div class="slide" data-slide="5">
+    <h3 class="fade-up">Track: Vibe Coding</h3>
+    <h2 class="fade-up">Zero Manual Code. <span class="highlight">100% AI.</span></h2>
+    <p class="fade-up" style="margin-top:12px">
+      Every single line of this project was generated by AI. The human role was <strong>Product Architect</strong>, steering the <span class="highlight">Google AI Studio Antigravity</span> agent through high-level prompts.
+    </p>
+    <div class="grid3 fade-up" style="margin-top:32px">
+      <div class="card">
+        <div class="icon">⚡</div>
+        <h4>48-Hour Ship</h4>
+        <p>Full-stack multiplayer game from zero to deployed in a single weekend</p>
+      </div>
+      <div class="card">
+        <div class="icon">🎮</div>
+        <h4>Custom Engine</h4>
+        <p>60FPS delta-time independent engine on React 19 + HTML5 Canvas</p>
+      </div>
+      <div class="card">
+        <div class="icon">🔥</div>
+        <h4>Complex Systems</h4>
+        <p>Collision physics, depth sorting, Firebase security rules — all AI-generated</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======== SLIDE 7: AI AGENTS ======== -->
+  <div class="slide" data-slide="6">
+    <h3 class="fade-up">Track: AI Agents</h3>
+    <h2 class="fade-up">The Cozy Bear 🐻</h2>
+    <p class="fade-up" style="margin-top:8px">An <span class="highlight">autonomous, proactive NPC</span> powered by Gemini 1.5 Flash — not a chatbot.</p>
+    <div class="bear-flow fade-up">
+      <div class="bear-step">
+        <div class="icon">👀</div>
+        <h4>Sense</h4>
+        <p>Reads game state: resources, time since last heart, task completion</p>
+      </div>
+      <div class="bear-arrow">→</div>
+      <div class="bear-step">
+        <div class="icon">🧠</div>
+        <h4>Think</h4>
+        <p>LLM reasoning via Gemini to decide the best coaching action</p>
+      </div>
+      <div class="bear-arrow">→</div>
+      <div class="bear-step">
+        <div class="icon">🚶</div>
+        <h4>Act</h4>
+        <p>Walks to player, delivers context-aware advice & Luffa notifications</p>
+      </div>
+    </div>
+    <p class="fade-up" style="margin-top:20px;font-size:.95rem">
+      <span class="highlight-purple">LuffaNator:</span> The Bear pushes insights from the game directly into the couple's Luffa chat thread.
+    </p>
+  </div>
+
+  <!-- ======== SLIDE 8: CREATIVE AI ======== -->
+  <div class="slide" data-slide="7">
+    <h3 class="fade-up">Track: Creative AI</h3>
+    <h2 class="fade-up">Magic Easel & Projector</h2>
+    <div class="cols fade-up" style="margin-top:24px">
+      <div class="col" style="text-align:center">
+        <div style="font-size:3.5rem;margin-bottom:12px">🎨</div>
+        <h3 style="text-align:center">Magic Easel</h3>
+        <p>Turn text-based memories into <span class="highlight">persistent pixel-art paintings</span> for your cabin walls using <strong>Gemini 3 Flash Image</strong> (Nano Banana 2).</p>
+        <p style="margin-top:8px;font-size:.9rem"><em>"Our first holiday in Cornwall"</em> → a framed painting on the wall.</p>
+      </div>
+      <div class="col" style="text-align:center">
+        <div style="font-size:3.5rem;margin-bottom:12px">📽️</div>
+        <h3 style="text-align:center">Magic Projector</h3>
+        <p>Generate <span class="highlight-blue">5-second lo-fi video loops</span> from shared dreams using <strong>Veo</strong>, projected inside the virtual cabin space.</p>
+        <p style="margin-top:8px;font-size:.9rem"><em>"A sunset beach with our dog"</em> → plays on the cabin projector.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======== SLIDE 9: ONCHAIN AI ======== -->
+  <div class="slide" data-slide="8">
+    <h3 class="fade-up">Track: Onchain AI</h3>
+    <h2 class="fade-up">The Vault ⛓️</h2>
+    <p class="fade-up" style="margin-top:10px;max-width:700px">
+      A real-time bridge to the <span class="highlight-purple">Endless Testnet</span>. In-game effort becomes verifiable on-chain assets.
+    </p>
+    <div class="pipeline fade-up" style="margin-top:32px">
+      <div class="pipe-step"><div class="icon">🪙</div><h4>Cozy Coins</h4><p>Earned in-game</p></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step"><div class="icon">🔐</div><h4>The Vault</h4><p>Bridge UI</p></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step"><div class="icon">⛓️</div><h4>EDS Tokens</h4><p>Minted on Endless</p></div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step"><div class="icon">💕</div><h4>Proof of Connection</h4><p>Persistent & trustless</p></div>
+    </div>
+    <p class="fade-up" style="margin-top:20px;font-size:.95rem;color:var(--cream-dim)">
+      Relationship milestones as <span class="highlight">soul-bound achievements</span> — your "Proof of Connection" lives forever on-chain.
+    </p>
+  </div>
+
+  <!-- ======== SLIDE 10: LUFFA ======== -->
+  <div class="slide" data-slide="9">
+    <h3 class="fade-up">Luffa Ecosystem</h3>
+    <h2 class="fade-up">The Third Space for Couples</h2>
+    <div class="luffa-grid fade-up">
+      <div class="card">
+        <div class="icon">🤝</div>
+        <h4>Superbox Handshake</h4>
+        <p>Zero-friction identity via Luffa SDK. Auto-sync based on chat room ID.</p>
+      </div>
+      <div class="card">
+        <div class="icon">🤖</div>
+        <h4>LuffaNator Bot</h4>
+        <p>Cozy Bear pushes real-time insights & nudges into the couple's Luffa chat.</p>
+      </div>
+      <div class="card">
+        <div class="icon">💬</div>
+        <h4>Always One Click Away</h4>
+        <p>Lives inside the chat as a mini-app — the cabin is always next to your conversation.</p>
+      </div>
+    </div>
+    <p class="fade-up" style="margin-top:20px;font-size:.95rem">
+      Cozy Cabin is a native <span class="highlight">Luffa Superbox (H5 Mini-App)</span> — deployed on Google Cloud Run.
+    </p>
+  </div>
+
+  <!-- ======== SLIDE 11: ARCHITECTURE ======== -->
+  <div class="slide" data-slide="10">
+    <h3 class="fade-up">Architecture</h3>
+    <h2 class="fade-up">Tech Stack</h2>
+    <div class="arch fade-up">
+      <div class="arch-row">
+        <div class="arch-box accent">Luffa Superbox (H5 Mini-App)</div>
+      </div>
+      <div class="arch-connector"></div>
+      <div class="arch-row">
+        <div class="arch-box">React 19</div>
+        <div class="arch-box">HTML5 Canvas</div>
+        <div class="arch-box">Custom 60FPS Engine</div>
+      </div>
+      <div class="arch-connector"></div>
+      <div class="arch-row">
+        <div class="arch-box">Gemini 1.5 Flash</div>
+        <div class="arch-box">Gemini 3 Flash Image</div>
+        <div class="arch-box">Veo</div>
+      </div>
+      <div class="arch-connector"></div>
+      <div class="arch-row">
+        <div class="arch-box">Firebase Firestore</div>
+        <div class="arch-box">Google Cloud Run</div>
+        <div class="arch-box accent">Endless Testnet</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======== SLIDE 12: WHY IT WINS ======== -->
+  <div class="slide" data-slide="11">
+    <h3 class="fade-up">Why It Wins</h3>
+    <h2 class="fade-up">Four Pillars</h2>
+    <div class="pillar-grid fade-up">
+      <div class="pillar">
+        <h4><span>🏗️</span>Complexity</h4>
+        <p>It's not a chatbot — it's a <strong>high-performance multiplayer engine</strong> with collision physics, depth sorting, and real-time sync.</p>
+      </div>
+      <div class="pillar">
+        <h4><span>🧠</span>Proactivity</h4>
+        <p>The AI Bear <strong>takes the initiative</strong>. It doesn't wait for prompts — it senses, reasons, and acts autonomously.</p>
+      </div>
+      <div class="pillar">
+        <h4><span>🔗</span>Cross-Platform</h4>
+        <p>Connects the <strong>Game World</strong>, the <strong>Luffa Chat</strong>, and the <strong>Endless Blockchain</strong> into one seamless loop.</p>
+      </div>
+      <div class="pillar">
+        <h4><span>⚡</span>Process</h4>
+        <p>The ultimate <strong>vibe coding</strong> proof — a single architect shipped a multi-model, multi-track platform in a weekend.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======== SLIDE 13: THANK YOU ======== -->
+  <div class="slide" data-slide="12">
+    <div class="big-emoji fade-up">🏠❤️</div>
+    <h2 class="fade-up">Thank You</h2>
+    <p class="tagline fade-up">Come visit the cabin.</p>
+    <div class="link-row fade-up" style="margin-top:20px">
+      <a href="https://github.com/essexcanning/Cozy-Cabin" target="_blank" class="link-btn">⭐ GitHub Repo</a>
+      <a href="https://callup.luffa.im/c/LSEGpNDNioX" target="_blank" class="link-btn">💬 Luffa Channel</a>
+    </div>
+    <p class="fade-up" style="margin-top:28px;font-size:1rem;color:var(--cream-dim)">
+      Built with 🤎 by <strong>Stephen Canning</strong><br>
+      <small>Powered by Google AI Studio Antigravity · Gemini · Veo · Firebase · Endless · Luffa</small>
+    </p>
+  </div>
+
+</div><!-- /deck -->
+
+<!-- Nav dots -->
+<div class="nav-dots" id="navDots"></div>
+<div class="counter" id="counter"></div>
+<div class="key-hint">← → to navigate</div>
+
+<script>
+(function(){
+  const slides = document.querySelectorAll('.slide');
+  const total = slides.length;
+  let current = 0;
+
+  // Build nav dots
+  const dotsEl = document.getElementById('navDots');
+  for(let i=0;i<total;i++){
+    const d = document.createElement('div');
+    d.className = 'dot' + (i===0?' active':'');
+    d.addEventListener('click',()=>goTo(i));
+    dotsEl.appendChild(d);
+  }
+
+  function goTo(n){
+    if(n<0||n>=total) return;
+    slides[current].classList.remove('active');
+    dotsEl.children[current].classList.remove('active');
+    current = n;
+    slides[current].classList.add('active');
+    dotsEl.children[current].classList.add('active');
+    document.getElementById('counter').textContent = (current+1)+' / '+total;
+  }
+
+  document.addEventListener('keydown',e=>{
+    if(e.key==='ArrowRight'||e.key===' ') goTo(current+1);
+    else if(e.key==='ArrowLeft') goTo(current-1);
+  });
+
+  // Swipe support
+  let touchX=0;
+  document.addEventListener('touchstart',e=>{touchX=e.touches[0].clientX});
+  document.addEventListener('touchend',e=>{
+    const dx=e.changedTouches[0].clientX-touchX;
+    if(Math.abs(dx)>50){dx<0?goTo(current+1):goTo(current-1)}
+  });
+
+  goTo(0);
+})();
+</script>
+</body>
+</html>
