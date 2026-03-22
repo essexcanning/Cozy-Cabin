@@ -15,7 +15,9 @@
         "skinColor": { "type": "string" },
         "eyeColor": { "type": "string" },
         "accessory": { "type": "string" },
-        "facialFeature": { "type": "string" }
+        "facialFeature": { "type": "string" },
+        "shirtColor": { "type": "string" },
+        "pantsColor": { "type": "string" }
       },
       "required": ["uid", "email"]
     },
@@ -33,6 +35,8 @@
           "properties": {
             "wood": { "type": "number" },
             "cozyCoins": { "type": "number" },
+            "heartsSent": { "type": "number" },
+            "projectorVideo": { "type": "string" },
             "tasks": {
               "type": "array",
               "items": {
@@ -48,7 +52,14 @@
               "type": "array",
               "items": { "type": "string" }
             },
-            "dateNight": { "type": "string", "nullable": true },
+            "dateNight": {
+              "type": "object",
+              "properties": {
+                "active": { "type": "boolean" },
+                "prompt": { "type": "string" }
+              },
+              "nullable": true
+            },
             "lastInteractionAt": { "type": "number" }
           }
         }

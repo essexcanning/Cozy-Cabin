@@ -1,4 +1,4 @@
-export const playSound = (type: 'coin' | 'task' | 'buy' | 'footstep' | 'interact') => {
+export const playSound = (type: 'coin' | 'task' | 'buy' | 'footstep' | 'interact' | 'pop') => {
   const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
   if (!AudioContext) return;
   
@@ -67,6 +67,17 @@ export const playSound = (type: 'coin' | 'task' | 'buy' | 'footstep' | 'interact
     
     osc.start(now);
     osc.stop(now + 0.2);
+  } else if (type === 'pop') {
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(800, now);
+    osc.frequency.exponentialRampToValueAtTime(300, now + 0.1);
+    
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.3, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+    
+    osc.start(now);
+    osc.stop(now + 0.1);
   }
 };
 

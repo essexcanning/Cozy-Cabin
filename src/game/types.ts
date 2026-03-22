@@ -12,7 +12,7 @@ export interface GameObject {
   y: number;
   width: number;
   height: number;
-  type: 'tree' | 'cabin' | 'bed' | 'rug' | 'table' | 'chair' | 'mailbox' | 'fence' | 'chest' | 'bookshelf' | 'fireplace' | 'mirror' | 'cat' | 'luxury_rug' | 'high_end_lamp' | 'gramophone' | 'potted_plant' | 'wall_art' | 'magic_easel' | 'painting' | 'vault';
+  type: 'tree' | 'cabin' | 'bed' | 'rug' | 'table' | 'chair' | 'mailbox' | 'fence' | 'chest' | 'bookshelf' | 'fireplace' | 'mirror' | 'cat' | 'luxury_rug' | 'high_end_lamp' | 'gramophone' | 'potted_plant' | 'wall_art' | 'magic_easel' | 'painting' | 'vault' | 'magic_projector';
   solid: boolean;
   interactable?: boolean;
   onInteract?: () => void;
@@ -23,14 +23,16 @@ export interface GameObject {
   animFrame?: number;
   moveTimer?: number;
   catState?: 'sleeping' | 'walking' | 'playing' | 'chasing';
+  videoUrl?: string;
 }
 
 export interface PlacedItem {
   id: string;
-  type: 'painting' | 'magic_easel';
+  type: 'painting' | 'magic_easel' | 'magic_projector';
   x: number;
   y: number;
   data?: string;
+  videoUrl?: string;
 }
 
 export interface NPC {
@@ -71,6 +73,8 @@ export interface GameState {
     accessory?: string;
     facialFeature?: string;
     lastFootstep?: number;
+    isDancing?: boolean;
+    danceTimer?: number;
   };
   spirit: NPC;
   otherPlayers: {
@@ -92,6 +96,8 @@ export interface GameState {
       eyeColor?: string;
       accessory?: string;
       facialFeature?: string;
+      isDancing?: boolean;
+      danceTimer?: number;
     }
   };
   keys: { [key: string]: boolean };
@@ -115,6 +121,7 @@ export interface GameState {
     purchasedItems: string[];
     dateNight: { active: boolean; prompt: string } | null;
     lastInteractionAt: number;
+    heartsSent: number;
   };
   ui: {
     chestOpen: boolean;
@@ -122,6 +129,7 @@ export interface GameState {
     coachOpen: boolean;
     dateNightOpen: boolean;
     vaultOpen: boolean;
+    projectorOpen: boolean;
   };
 }
 
@@ -213,7 +221,8 @@ export const createInitialState = (): GameState => {
       ],
       purchasedItems: [],
       dateNight: null,
-      lastInteractionAt: Date.now()
+      lastInteractionAt: Date.now(),
+      heartsSent: 0
     },
     spirit: {
       id: 'spirit',
@@ -229,7 +238,7 @@ export const createInitialState = (): GameState => {
       speechBubble: null,
       speechTimer: 0
     },
-    ui: { chestOpen: false, tasksOpen: false, coachOpen: false, dateNightOpen: false, vaultOpen: false },
+    ui: { chestOpen: false, tasksOpen: false, coachOpen: false, dateNightOpen: false, vaultOpen: false, projectorOpen: false },
     objects: {
       outside: [
         {
@@ -259,7 +268,7 @@ export const createInitialState = (): GameState => {
         {
           id: 'fireplace',
           x: 0,
-          y: -100,
+          y: -180,
           width: 60,
           height: 40,
           type: 'fireplace',
@@ -268,8 +277,8 @@ export const createInitialState = (): GameState => {
         },
         {
           id: 'bookshelf',
-          x: -130,
-          y: 30,
+          x: -220,
+          y: 50,
           width: 20,
           height: 60,
           type: 'bookshelf',
@@ -278,8 +287,8 @@ export const createInitialState = (): GameState => {
         },
         {
           id: 'bed',
-          x: -110,
-          y: -70,
+          x: -180,
+          y: -130,
           width: 60,
           height: 80,
           type: 'bed',
@@ -290,15 +299,15 @@ export const createInitialState = (): GameState => {
           id: 'rug',
           x: 0,
           y: 0,
-          width: 120,
-          height: 80,
+          width: 200,
+          height: 140,
           type: 'rug',
           solid: false,
         },
         {
           id: 'table',
-          x: 80,
-          y: -20,
+          x: 150,
+          y: -40,
           width: 60,
           height: 40,
           type: 'table',
@@ -306,8 +315,8 @@ export const createInitialState = (): GameState => {
         },
         {
           id: 'chest',
-          x: 110,
-          y: -90,
+          x: 200,
+          y: -160,
           width: 40,
           height: 30,
           type: 'chest',
@@ -316,8 +325,8 @@ export const createInitialState = (): GameState => {
         },
         {
           id: 'mirror',
-          x: -50,
-          y: -100,
+          x: -80,
+          y: -180,
           width: 30,
           height: 40,
           type: 'mirror',
@@ -326,8 +335,8 @@ export const createInitialState = (): GameState => {
         },
         {
           id: 'vault',
-          x: 110,
-          y: 30,
+          x: 200,
+          y: 80,
           width: 30,
           height: 40,
           type: 'vault',

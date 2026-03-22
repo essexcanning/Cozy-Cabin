@@ -1,5 +1,4 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { AlertCircle, RefreshCw } from 'lucide-react';
 
 interface Props {
   children: ReactNode;
@@ -7,67 +6,40 @@ interface Props {
 
 interface State {
   hasError: boolean;
-  error: Error | null;
 }
 
-class ErrorBoundary extends React.Component<Props, State> {
-  constructor(props: Props) {
-    super(props);
-    this.state = {
-      hasError: false,
-      error: null,
-    };
-  }
+export default class GameErrorBoundary extends Component<Props, State> {
+  public state: State = {
+    hasError: false
+  };
 
-  public static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+  public static getDerivedStateFromError(_: Error): State {
+    return { hasError: true };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught error:', error, errorInfo);
+    console.error('GameCanvas Error:', error, errorInfo);
   }
-
-  private handleReset = () => {
-    window.location.reload();
-  };
 
   public render() {
     if (this.state.hasError) {
-      let errorMessage = 'An unexpected error occurred.';
-      let isPermissionError = false;
-
-      try {
-        const parsed = JSON.parse(this.state.error?.message || '{}');
-        if (parsed.error?.includes('Missing or insufficient permissions')) {
-          isPermissionError = true;
-          errorMessage = `Permission denied during ${parsed.operationType} on ${parsed.path}. Please ensure you are logged in and have access to this world.`;
-        } else if (this.state.error?.message) {
-          errorMessage = this.state.error.message;
-        }
-      } catch {
-        errorMessage = this.state.error?.message || errorMessage;
-      }
-
       return (
-        <div className="min-h-screen bg-stone-100 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center border border-stone-200">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <AlertCircle className="w-8 h-8 text-red-600" />
-            </div>
-            <h1 className="text-2xl font-serif font-bold text-stone-900 mb-4">
-              {isPermissionError ? 'Access Denied' : 'Something went wrong'}
-            </h1>
-            <p className="text-stone-600 mb-8 leading-relaxed">
-              {errorMessage}
-            </p>
-            <button
-              onClick={this.handleReset}
-              className="w-full flex items-center justify-center gap-2 bg-stone-900 text-white py-3 rounded-xl font-medium hover:bg-stone-800 transition-colors"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Try Again
-            </button>
+        <div className="w-full h-screen bg-emerald-900 flex flex-col items-center justify-center p-4 text-center">
+          <div className="text-6xl mb-4">🏠</div>
+          <h1 className="text-2xl font-bold text-emerald-100 mb-4">Emergency Cabin Mode</h1>
+          <p className="text-emerald-300 mb-8 max-w-md">
+            The full cabin failed to load, but we've deployed the emergency shelter. 
+            The game engine is still running in a simplified state.
+          </p>
+          <div className="w-32 h-32 bg-emerald-800 rounded-full flex items-center justify-center animate-pulse border-4 border-emerald-700">
+             <div className="text-4xl">👤</div>
           </div>
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-8 px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors"
+          >
+            Try Full Reload
+          </button>
         </div>
       );
     }
@@ -75,5 +47,3 @@ class ErrorBoundary extends React.Component<Props, State> {
     return this.props.children;
   }
 }
-
-export default ErrorBoundary;

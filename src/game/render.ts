@@ -1,8 +1,12 @@
 import { GameState, GameObject } from './types';
 
-export const renderGame = (ctx: CanvasRenderingContext2D, state: GameState, width: number, height: number) => {
+export const renderGame = (ctx: CanvasRenderingContext2D, state: GameState, width: number, height: number, videoElement: HTMLVideoElement | null = null) => {
   // Clear screen
-  ctx.fillStyle = state.scene === 'outside' ? '#8bc34a' : '#1a1a1a'; // Grass green or dark void
+  // Environmental Mood System
+  const engagementScore = state.shared.heartsSent || 0;
+  const isHighEngagement = engagementScore >= 3;
+  
+  ctx.fillStyle = state.scene === 'outside' ? (isHighEngagement ? '#9ccc65' : '#7cb342') : '#1a1a1a';
   ctx.fillRect(0, 0, width, height);
 
   ctx.save();
@@ -11,8 +15,8 @@ export const renderGame = (ctx: CanvasRenderingContext2D, state: GameState, widt
   ctx.translate(width / 2 - state.camera.x, height / 2 - state.camera.y);
 
   if (state.scene === 'outside') {
-    drawGrassPattern(ctx, state.camera.x, state.camera.y, width, height);
-    drawDirtPath(ctx);
+    drawGrassPattern(ctx, state.camera.x, state.camera.y, width, height, isHighEngagement);
+    drawDirtPath(ctx, isHighEngagement);
   } else if (state.scene === 'inside') {
     drawInteriorRoom(ctx);
   }
@@ -20,18 +24,15 @@ export const renderGame = (ctx: CanvasRenderingContext2D, state: GameState, widt
   // Draw floor objects first (like rugs) so they appear under the player
   const floorObjects = state.objects[state.scene].filter(obj => obj.type === 'rug' || obj.type === 'luxury_rug');
   for (const obj of floorObjects) {
-    drawObject(ctx, obj);
+    drawObject(ctx, obj, videoElement);
   }
 
   // Sort remaining objects by Y position for depth sorting
   const renderables: (GameObject | { type: 'player', isLocal: boolean, uid?: string, y: number } | { type: 'spirit', y: number })[] = [
     ...state.objects[state.scene].filter(obj => obj.type !== 'rug' && obj.type !== 'luxury_rug'),
-    { type: 'player', isLocal: true, y: state.player.y }
+    { type: 'player', isLocal: true, y: state.player.y },
+    { type: 'spirit', y: state.spirit.y }
   ];
-
-  if (state.scene === 'inside') {
-    renderables.push({ type: 'spirit', y: state.spirit.y });
-  }
 
   for (const [uid, otherPlayer] of Object.entries(state.otherPlayers)) {
     if (otherPlayer.scene === state.scene) {
@@ -56,21 +57,69 @@ export const renderGame = (ctx: CanvasRenderingContext2D, state: GameState, widt
     } else if (item.type === 'spirit') {
       drawNPC(ctx, state.spirit);
     } else {
-      drawObject(ctx, item as GameObject);
+      drawObject(ctx, item as GameObject, videoElement);
     }
   }
 
   if (state.scene === 'inside') {
-    const roomWidth = 300;
-    const roomHeight = 240;
+    const roomWidth = 500;
+    const roomHeight = 400;
     const time = Date.now() / 200;
     const flicker = Math.sin(time) * 5;
     const gradient = ctx.createRadialGradient(0, -100, 20 + flicker, 0, -20, roomWidth / 1.2);
-    gradient.addColorStop(0, 'rgba(255, 140, 50, 0.2)'); // Warmer, more intense glow
-    gradient.addColorStop(0.5, 'rgba(30, 15, 5, 0.3)');
-    gradient.addColorStop(1, 'rgba(10, 5, 0, 0.7)');
+    
+    if (isHighEngagement) {
+      gradient.addColorStop(0, 'rgba(255, 180, 100, 0.3)'); // Warmer, golden hour
+      gradient.addColorStop(0.5, 'rgba(50, 25, 10, 0.4)');
+      gradient.addColorStop(1, 'rgba(10, 5, 0, 0.7)');
+    } else {
+      gradient.addColorStop(0, 'rgba(150, 200, 255, 0.15)'); // Cooler, blue/grey
+      gradient.addColorStop(0.5, 'rgba(20, 30, 40, 0.4)');
+      gradient.addColorStop(1, 'rgba(5, 10, 15, 0.8)');
+    }
+    
     ctx.fillStyle = gradient;
     ctx.fillRect(-roomWidth / 2, -roomHeight / 2, roomWidth, roomHeight);
+  } else if (state.scene === 'outside') {
+    // Weather effects outside
+    if (!isHighEngagement) {
+      // Soft rain
+      ctx.fillStyle = 'rgba(150, 200, 255, 0.4)';
+      const time = Date.now() / 50;
+      for (let i = 0; i < 300; i++) {
+        const x = ((i * 137 + time * 5) % width) - width/2 + state.camera.x;
+        const y = ((i * 93 + time * 15) % height) - height/2 + state.camera.y;
+        ctx.fillRect(x, y, 1, 10);
+      }
+      // Blue/grey overlay
+      ctx.fillStyle = 'rgba(20, 30, 50, 0.2)';
+      ctx.fillRect(state.camera.x - width/2, state.camera.y - height/2, width, height);
+    } else {
+      // Sun rays
+      const time = Date.now() / 2000;
+      ctx.fillStyle = 'rgba(255, 235, 150, 0.05)';
+      
+      const cx = state.camera.x - width/2;
+      const cy = state.camera.y - height/2;
+      
+      ctx.beginPath();
+      ctx.moveTo(cx + width * 0.2, cy - 100);
+      ctx.lineTo(cx + width * 0.8 + Math.sin(time) * 100, cy + height + 100);
+      ctx.lineTo(cx + width * 1.2 + Math.sin(time * 0.8) * 100, cy + height + 100);
+      ctx.lineTo(cx + width * 0.4, cy - 100);
+      ctx.fill();
+      
+      ctx.beginPath();
+      ctx.moveTo(cx - 100, cy + height * 0.1);
+      ctx.lineTo(cx + width + 100, cy + height * 0.7 + Math.cos(time * 1.2) * 100);
+      ctx.lineTo(cx + width + 100, cy + height * 0.9 + Math.cos(time * 0.9) * 100);
+      ctx.lineTo(cx - 100, cy + height * 0.3);
+      ctx.fill();
+
+      // Golden overlay
+      ctx.fillStyle = 'rgba(255, 180, 50, 0.1)';
+      ctx.fillRect(state.camera.x - width/2, state.camera.y - height/2, width, height);
+    }
   }
 
   ctx.restore();
@@ -100,8 +149,8 @@ export const renderGame = (ctx: CanvasRenderingContext2D, state: GameState, widt
   ctx.fillText(`Wood: ${state.inventory.wood}`, 40, 40);
 };
 
-const drawGrassPattern = (ctx: CanvasRenderingContext2D, cx: number, cy: number, w: number, h: number) => {
-  ctx.fillStyle = '#7cb342'; // Slightly darker green for pattern
+const drawGrassPattern = (ctx: CanvasRenderingContext2D, cx: number, cy: number, w: number, h: number, isHighEngagement: boolean) => {
+  ctx.fillStyle = isHighEngagement ? '#7cb342' : '#558b2f'; // Slightly darker green for pattern
   const tileSize = 64;
   
   const startX = Math.floor((cx - w / 2) / tileSize) * tileSize;
@@ -123,8 +172,8 @@ const drawGrassPattern = (ctx: CanvasRenderingContext2D, cx: number, cy: number,
   }
 };
 
-const drawDirtPath = (ctx: CanvasRenderingContext2D) => {
-  ctx.fillStyle = '#8d6e63'; // Dirt color
+const drawDirtPath = (ctx: CanvasRenderingContext2D, isHighEngagement: boolean) => {
+  ctx.fillStyle = isHighEngagement ? '#8d6e63' : '#6d4c41'; // Dirt color
   
   // Path from door downwards
   ctx.beginPath();
@@ -137,15 +186,15 @@ const drawDirtPath = (ctx: CanvasRenderingContext2D) => {
   ctx.fill();
   
   // Little dirt patches
-  ctx.fillStyle = '#795548';
+  ctx.fillStyle = isHighEngagement ? '#795548' : '#5d4037';
   ctx.beginPath(); ctx.arc(-90, 20, 5, 0, Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.arc(-70, 60, 8, 0, Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.arc(-10, 0, 6, 0, Math.PI*2); ctx.fill();
 };
 
 const drawInteriorRoom = (ctx: CanvasRenderingContext2D) => {
-  const roomWidth = 300;
-  const roomHeight = 240;
+  const roomWidth = 500;
+  const roomHeight = 400;
   
   // Floor base - richer warm wood
   ctx.fillStyle = '#8b5a2b';
@@ -301,15 +350,26 @@ export const drawPlayer = (ctx: CanvasRenderingContext2D, player: {
   skinColor?: string,
   eyeColor?: string,
   accessory?: string,
-  facialFeature?: string
+  facialFeature?: string,
+  isDancing?: boolean,
+  danceTimer?: number
 }) => {
-  const { x, y, facing, isMoving, animFrame, color, outfit, hairStyle, hairColor, skinColor, eyeColor, accessory, facialFeature } = player;
+  const { x, y, facing, isMoving, animFrame, color, outfit, hairStyle, hairColor, skinColor, eyeColor, accessory, facialFeature, isDancing, danceTimer } = player;
   
   ctx.save();
   ctx.translate(x, y);
 
   // Bobbing animation (absolute sine for a "bounce" step)
-  const bob = isMoving ? Math.abs(Math.sin(animFrame * Math.PI * 2)) * 3 : 0;
+  let bob = isMoving ? Math.abs(Math.sin(animFrame * Math.PI * 2)) * 3 : 0;
+  let tilt = isMoving ? Math.sin(animFrame * Math.PI * 2) * 0.08 : 0;
+  let armSwing = isMoving ? Math.sin(animFrame * Math.PI * 2) * 6 : 0;
+
+  if (isDancing) {
+    const time = Date.now() / 150;
+    bob = Math.abs(Math.sin(time)) * 6;
+    tilt = Math.sin(time * 0.5) * 0.2;
+    armSwing = Math.sin(time * 2) * 10;
+  }
 
   // Shadow (scales slightly with bob)
   ctx.fillStyle = 'rgba(0,0,0,0.2)';
@@ -320,11 +380,9 @@ export const drawPlayer = (ctx: CanvasRenderingContext2D, player: {
   ctx.translate(0, -bob);
 
   // Body Tilt
-  const tilt = isMoving ? Math.sin(animFrame * Math.PI * 2) * 0.08 : 0;
   ctx.rotate(tilt);
 
   // Arms (drawn before body if facing up, after if facing down)
-  const armSwing = isMoving ? Math.sin(animFrame * Math.PI * 2) * 6 : 0;
   
   const getShirtColor = () => {
     if (outfit === 'outfit_suit') return '#212121';
@@ -549,7 +607,7 @@ export const drawPlayer = (ctx: CanvasRenderingContext2D, player: {
   ctx.restore();
 };
 
-const drawObject = (ctx: CanvasRenderingContext2D, obj: GameObject) => {
+const drawObject = (ctx: CanvasRenderingContext2D, obj: GameObject, videoElement: HTMLVideoElement | null = null) => {
   ctx.save();
   ctx.translate(obj.x, obj.y);
 
@@ -1229,6 +1287,42 @@ const drawObject = (ctx: CanvasRenderingContext2D, obj: GameObject) => {
     }
     ctx.fillStyle = '#000';
     ctx.fillRect(-18, -13, 36, 26);
+  } else if (obj.type === 'magic_projector') {
+    // Base
+    ctx.fillStyle = '#37474f';
+    ctx.fillRect(-15, obj.height/2 - 10, 30, 10);
+    // Body
+    ctx.fillStyle = '#263238';
+    ctx.fillRect(-10, -obj.height/2 + 10, 20, 20);
+    // Lens
+    ctx.fillStyle = '#81d4fa';
+    ctx.beginPath();
+    ctx.arc(0, -obj.height/2 + 20, 6, 0, Math.PI*2);
+    ctx.fill();
+    // Light beam
+    const time = Date.now() / 200;
+    ctx.fillStyle = `rgba(129, 212, 250, ${0.1 + Math.sin(time)*0.1})`;
+    ctx.beginPath();
+    ctx.moveTo(0, -obj.height/2 + 20);
+    ctx.lineTo(-40, obj.height/2 + 40);
+    ctx.lineTo(40, obj.height/2 + 40);
+    ctx.fill();
+
+    // Draw video projection
+    if (videoElement && videoElement.readyState >= 2) {
+      ctx.save();
+      // Draw the video on the floor/wall in front of the projector
+      // We'll draw it below the projector
+      ctx.globalAlpha = 0.8;
+      // Add a slight perspective transform if possible, or just draw it flat
+      ctx.drawImage(videoElement, -60, obj.height/2 + 40, 120, 67.5); // 16:9 aspect ratio
+      
+      // Add a glowing border
+      ctx.strokeStyle = `rgba(129, 212, 250, ${0.5 + Math.sin(time)*0.3})`;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-60, obj.height/2 + 40, 120, 67.5);
+      ctx.restore();
+    }
   }
 
   ctx.restore();

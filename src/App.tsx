@@ -11,17 +11,40 @@ import { auth, db } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, getDocFromCache } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './utils/errorHandling';
+import { useLuffa } from './contexts/LuffaContext';
+import GameErrorBoundary from './components/ErrorBoundary';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [worldId, setWorldId] = useState<string | null>(localStorage.getItem('cozy_cabin_world_id'));
   const [loading, setLoading] = useState(true);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
+  const [forceDemoMode, setForceDemoMode] = useState(false);
+  const { isLuffa, isLuffaGuest, luffaUser } = useLuffa();
+
+  useEffect(() => {
+    if (isLuffaGuest) {
+      // Visual Fix: If the spinner is still there after 2 seconds of being a "Guest," force-hide the spinner and show the Canvas.
+      const timer = setTimeout(() => {
+        setForceDemoMode(true);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [isLuffaGuest]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
+        // Scene Hardloading: If isLuffaGuest is true, don't wait for Firestore to return a world.
+        if (isLuffaGuest) {
+          const genericWorldId = luffaUser?.partnerId ? `luffa_${luffaUser.partnerId}` : 'local_demo_world';
+          setWorldId(genericWorldId);
+          localStorage.setItem('cozy_cabin_world_id', genericWorldId);
+          setLoading(false);
+          return;
+        }
+
         // Check if user already has a world
         const fetchWorld = async (retryCount = 0) => {
           try {
@@ -39,6 +62,11 @@ export default function App() {
               const id = userDoc.data().worldId;
               setWorldId(id);
               localStorage.setItem('cozy_cabin_world_id', id);
+            } else if (isLuffa) {
+              // Relaxed Init: Default to a generic "Cozy Cabin" world if the room_id isn't found
+              const genericWorldId = luffaUser?.partnerId ? `luffa_${luffaUser.partnerId}` : 'luffa_generic_world';
+              setWorldId(genericWorldId);
+              localStorage.setItem('cozy_cabin_world_id', genericWorldId);
             }
           } catch (error: any) {
             console.error("Error fetching user world:", error);
@@ -56,18 +84,19 @@ export default function App() {
               handleFirestoreError(error, OperationType.GET, `users/${currentUser.uid}`);
             }
           }
+          setLoading(false);
         };
         
         fetchWorld();
       } else {
         setWorldId(null);
         localStorage.removeItem('cozy_cabin_world_id');
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [isLuffa, isLuffaGuest, luffaUser]);
 
   if (quotaExceeded) {
     return (
@@ -90,7 +119,7 @@ export default function App() {
     );
   }
 
-  if (loading) {
+  if (loading && !forceDemoMode) {
     return (
       <div className="min-h-screen bg-stone-900 flex items-center justify-center">
         <div className="text-stone-400">Loading...</div>
@@ -98,17 +127,21 @@ export default function App() {
     );
   }
 
-  if (!user) {
+  if (!user && !forceDemoMode) {
     return <Auth />;
   }
 
-  if (!worldId) {
+  if (!worldId && !forceDemoMode) {
     return <WorldSetup onWorldJoined={(id) => setWorldId(id)} />;
   }
 
+  const finalWorldId = forceDemoMode ? 'local_demo_world' : worldId!;
+
   return (
     <main className="w-full h-screen overflow-hidden relative">
-      <GameCanvas worldId={worldId} />
+      <GameErrorBoundary>
+        <GameCanvas worldId={finalWorldId} />
+      </GameErrorBoundary>
     </main>
   );
 }

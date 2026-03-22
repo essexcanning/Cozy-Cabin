@@ -11,6 +11,12 @@ service cloud.firestore {
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
+    function isAdmin() {
+      return isAuthenticated() &&
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+          (request.auth.token.email == "stephencanninguk@gmail.com" && request.auth.token.email_verified == true));
+    }
     function uidUnchanged() {
       return !('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid;
     }
@@ -23,31 +29,56 @@ service cloud.firestore {
     function hasOnlyAllowedFields(fields) {
       return request.resource.data.keys().hasOnly(fields);
     }
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
     
     // Domain Validators
     function isValidUser() {
-      return hasOnlyAllowedFields(['uid', 'displayName', 'email', 'worldId', 'gender', 'hairStyle', 'hairColor', 'skinColor', 'eyeColor', 'accessory', 'facialFeature']) &&
+      return hasOnlyAllowedFields(['uid', 'displayName', 'email', 'worldId', 'gender', 'hairStyle', 'hairColor', 'skinColor', 'eyeColor', 'accessory', 'facialFeature', 'shirtColor', 'pantsColor', 'role']) &&
              request.resource.data.uid is string &&
-             (!('email' in request.resource.data) || request.resource.data.email == null || request.resource.data.email is string) &&
-             (!('displayName' in request.resource.data) || request.resource.data.displayName == null || request.resource.data.displayName is string) &&
-             (!('worldId' in request.resource.data) || request.resource.data.worldId is string) &&
-             (!('gender' in request.resource.data) || request.resource.data.gender is string) &&
-             (!('hairStyle' in request.resource.data) || request.resource.data.hairStyle is string) &&
-             (!('hairColor' in request.resource.data) || request.resource.data.hairColor is string) &&
-             (!('skinColor' in request.resource.data) || request.resource.data.skinColor is string) &&
-             (!('eyeColor' in request.resource.data) || request.resource.data.eyeColor is string) &&
-             (!('accessory' in request.resource.data) || request.resource.data.accessory is string) &&
-             (!('facialFeature' in request.resource.data) || request.resource.data.facialFeature is string);
+             (!('email' in request.resource.data) || request.resource.data.email == null || (request.resource.data.email is string && request.resource.data.email.size() < 256)) &&
+             (!('displayName' in request.resource.data) || request.resource.data.displayName == null || (request.resource.data.displayName is string && request.resource.data.displayName.size() < 100)) &&
+             (!('worldId' in request.resource.data) || (request.resource.data.worldId is string && request.resource.data.worldId.size() < 100)) &&
+             (!('gender' in request.resource.data) || (request.resource.data.gender is string && request.resource.data.gender.size() < 50)) &&
+             (!('hairStyle' in request.resource.data) || (request.resource.data.hairStyle is string && request.resource.data.hairStyle.size() < 50)) &&
+             (!('hairColor' in request.resource.data) || (request.resource.data.hairColor is string && request.resource.data.hairColor.size() < 50)) &&
+             (!('skinColor' in request.resource.data) || (request.resource.data.skinColor is string && request.resource.data.skinColor.size() < 50)) &&
+             (!('eyeColor' in request.resource.data) || (request.resource.data.eyeColor is string && request.resource.data.eyeColor.size() < 50)) &&
+             (!('accessory' in request.resource.data) || (request.resource.data.accessory is string && request.resource.data.accessory.size() < 50)) &&
+             (!('facialFeature' in request.resource.data) || (request.resource.data.facialFeature is string && request.resource.data.facialFeature.size() < 50)) &&
+             (!('shirtColor' in request.resource.data) || (request.resource.data.shirtColor is string && request.resource.data.shirtColor.size() < 50)) &&
+             (!('pantsColor' in request.resource.data) || (request.resource.data.pantsColor is string && request.resource.data.pantsColor.size() < 50)) &&
+             (!('role' in request.resource.data) || (request.resource.data.role in ['admin', 'user']));
     }
     
-    function isValidWorld() {
+    function isValidSharedState(shared) {
+      return shared is map &&
+             (!('wood' in shared) || shared.wood is number) &&
+             (!('cozyCoins' in shared) || shared.cozyCoins is number) &&
+             (!('heartsSent' in shared) || shared.heartsSent is number) &&
+             (!('projectorVideo' in shared) || shared.projectorVideo == null || (shared.projectorVideo is string && shared.projectorVideo.size() < 2048)) &&
+             (!('lastInteractionAt' in shared) || shared.lastInteractionAt is number) &&
+             (!('purchasedItems' in shared) || (shared.purchasedItems is list && shared.purchasedItems.size() < 100)) &&
+             (!('tasks' in shared) || (shared.tasks is list && shared.tasks.size() < 50)) &&
+             (!('dateNight' in shared) || shared.dateNight == null || (shared.dateNight is map && (!('active' in shared.dateNight) || shared.dateNight.active is bool) && (!('prompt' in shared.dateNight) || (shared.dateNight.prompt is string && shared.dateNight.prompt.size() < 1000))));
+    }
+
+    function isValidWorld(worldId) {
+      let isDemo = worldId == 'local_demo_world';
       return hasOnlyAllowedFields(['inviteCode', 'ownerId', 'partnerId', 'createdAt', 'shared']) &&
-             request.resource.data.inviteCode is string &&
-             request.resource.data.inviteCode.size() == 6 &&
-             request.resource.data.ownerId is string &&
-             request.resource.data.createdAt is timestamp &&
+             (isDemo || (
+               request.resource.data.inviteCode is string &&
+               request.resource.data.inviteCode.size() >= 5 &&
+               request.resource.data.inviteCode.size() <= 10 &&
+               request.resource.data.ownerId is string &&
+               request.resource.data.createdAt is timestamp
+             )) &&
              (!('partnerId' in request.resource.data) || request.resource.data.partnerId is string) &&
-             (!('shared' in request.resource.data) || request.resource.data.shared is map);
+             (!('shared' in request.resource.data) || isValidSharedState(request.resource.data.shared));
     }
     
     function isValidPlayerState() {
@@ -56,24 +87,26 @@ service cloud.firestore {
              request.resource.data.x is number &&
              request.resource.data.y is number &&
              request.resource.data.scene is string &&
-             (!('facing' in request.resource.data) || request.resource.data.facing is string) &&
+             request.resource.data.scene.size() < 100 &&
+             (!('facing' in request.resource.data) || (request.resource.data.facing is string && request.resource.data.facing.size() < 20)) &&
              (!('isMoving' in request.resource.data) || request.resource.data.isMoving is bool) &&
              (!('animFrame' in request.resource.data) || request.resource.data.animFrame is number) &&
-             (!('color' in request.resource.data) || request.resource.data.color is string) &&
-             (!('outfit' in request.resource.data) || request.resource.data.outfit is string) &&
-             (!('gender' in request.resource.data) || request.resource.data.gender is string) &&
-             (!('hairStyle' in request.resource.data) || request.resource.data.hairStyle is string) &&
-             (!('hairColor' in request.resource.data) || request.resource.data.hairColor is string) &&
-             (!('skinColor' in request.resource.data) || request.resource.data.skinColor is string) &&
-             (!('eyeColor' in request.resource.data) || request.resource.data.eyeColor is string) &&
-             (!('accessory' in request.resource.data) || request.resource.data.accessory is string) &&
-             (!('facialFeature' in request.resource.data) || request.resource.data.facialFeature is string) &&
+             (!('color' in request.resource.data) || (request.resource.data.color is string && request.resource.data.color.size() < 50)) &&
+             (!('outfit' in request.resource.data) || (request.resource.data.outfit is string && request.resource.data.outfit.size() < 50)) &&
+             (!('gender' in request.resource.data) || (request.resource.data.gender is string && request.resource.data.gender.size() < 50)) &&
+             (!('hairStyle' in request.resource.data) || (request.resource.data.hairStyle is string && request.resource.data.hairStyle.size() < 50)) &&
+             (!('hairColor' in request.resource.data) || (request.resource.data.hairColor is string && request.resource.data.hairColor.size() < 50)) &&
+             (!('skinColor' in request.resource.data) || (request.resource.data.skinColor is string && request.resource.data.skinColor.size() < 50)) &&
+             (!('eyeColor' in request.resource.data) || (request.resource.data.eyeColor is string && request.resource.data.eyeColor.size() < 50)) &&
+             (!('accessory' in request.resource.data) || (request.resource.data.accessory is string && request.resource.data.accessory.size() < 50)) &&
+             (!('facialFeature' in request.resource.data) || (request.resource.data.facialFeature is string && request.resource.data.facialFeature.size() < 50)) &&
              (!('lastUpdated' in request.resource.data) || request.resource.data.lastUpdated is timestamp);
     }
 
     function isValidPainting() {
       return hasOnlyAllowedFields(['id', 'x', 'y', 'data', 'createdAt']) &&
              request.resource.data.id is string &&
+             request.resource.data.id.size() < 100 &&
              request.resource.data.x is number &&
              request.resource.data.y is number &&
              request.resource.data.data is string &&
@@ -82,39 +115,38 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isOwner(userId);
-      allow create: if isOwner(userId) && isValidUser() && uidUnchanged();
-      allow update: if isOwner(userId) && isValidUser() && uidNotModified();
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser() && uidUnchanged() && (!('role' in request.resource.data) || request.resource.data.role == 'user');
+      allow update: if (isOwner(userId) && isValidUser() && uidNotModified() && (!('role' in request.resource.data) || request.resource.data.role == resource.data.role)) || isAdmin();
     }
     
     match /worlds/{worldId} {
-      // Allow read if you are the owner or partner, or if you're trying to join (we can allow read if authenticated for joining via invite code)
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isValidWorld() && request.resource.data.ownerId == request.auth.uid;
-      // Allow update if owner or partner, or if joining (partnerId is being set)
-      allow update: if isAuthenticated() && isValidWorld() && 
-                    (resource.data.ownerId == request.auth.uid || 
+      allow create: if isAuthenticated() && isValidWorld(worldId) && (worldId == 'local_demo_world' || request.resource.data.ownerId == request.auth.uid);
+      allow update: if isAuthenticated() && isValidWorld(worldId) && 
+                    (worldId == 'local_demo_world' ||
+                     resource.data.ownerId == request.auth.uid || 
                      resource.data.partnerId == request.auth.uid || 
-                     (!('partnerId' in resource.data) && request.resource.data.partnerId == request.auth.uid));
+                     (!('partnerId' in resource.data) && request.resource.data.partnerId == request.auth.uid) ||
+                     isAdmin());
+      allow delete: if isAdmin();
                      
       match /players/{playerId} {
-        // Anyone in the world can read player states
         allow read: if isAuthenticated();
-        // A player can only write their own state
-        allow create, update: if isOwner(playerId);
-        allow delete: if isOwner(playerId);
+        allow create, update: if isOwner(playerId) && isValidPlayerState();
+        allow delete: if isOwner(playerId) || isAdmin();
       }
 
       match /paintings/{paintingId} {
-        // Anyone in the world can read paintings
         allow read: if isAuthenticated();
-        // Only owner or partner can create/delete paintings
         allow create: if isAuthenticated() && isValidPainting() && 
                       (get(/databases/$(database)/documents/worlds/$(worldId)).data.ownerId == request.auth.uid || 
-                       get(/databases/$(database)/documents/worlds/$(worldId)).data.partnerId == request.auth.uid);
+                       get(/databases/$(database)/documents/worlds/$(worldId)).data.partnerId == request.auth.uid ||
+                       isAdmin());
         allow delete: if isAuthenticated() && 
                       (get(/databases/$(database)/documents/worlds/$(worldId)).data.ownerId == request.auth.uid || 
-                       get(/databases/$(database)/documents/worlds/$(worldId)).data.partnerId == request.auth.uid);
+                       get(/databases/$(database)/documents/worlds/$(worldId)).data.partnerId == request.auth.uid ||
+                       isAdmin());
       }
     }
   }

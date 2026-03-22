@@ -4,6 +4,13 @@ import { playSound } from './audio';
 export const updateGame = (state: GameState, deltaTime: number) => {
   if (state.ui.chestOpen || state.ui.vaultOpen) return;
 
+  // Handle dance timer
+  if (state.player.isDancing && state.player.danceTimer) {
+    if (Date.now() > state.player.danceTimer) {
+      state.player.isDancing = false;
+    }
+  }
+
   // Handle input
   state.player.dx = 0;
   state.player.dy = 0;
@@ -114,8 +121,8 @@ export const updateGame = (state: GameState, deltaTime: number) => {
 
   // Interior bounds
   if (state.scene === 'inside') {
-    const roomWidth = 300;
-    const roomHeight = 240;
+    const roomWidth = 500;
+    const roomHeight = 400;
     if (playerRect.left < -roomWidth / 2 || playerRect.right > roomWidth / 2) canMoveX = false;
     if (playerRect.top < -roomHeight / 2 || playerRect.bottom > roomHeight / 2) canMoveY = false;
   }
@@ -149,7 +156,12 @@ export const updateGame = (state: GameState, deltaTime: number) => {
         // Enter cabin
         state.scene = 'inside';
         state.player.x = 0;
-        state.player.y = 100;
+        state.player.y = 180;
+        
+        // Move spirit inside too
+        state.spirit.x = 0;
+        state.spirit.y = 0;
+        state.spirit.isWalking = false;
         return; // Skip rest of update this frame
       }
     }
@@ -181,10 +193,15 @@ export const updateGame = (state: GameState, deltaTime: number) => {
   if (canMoveY) state.player.y = newY;
 
   // Interior exit
-  if (state.scene === 'inside' && state.player.y > 105 && Math.abs(state.player.x) < 25) {
+  if (state.scene === 'inside' && state.player.y > 185 && Math.abs(state.player.x) < 25) {
     state.scene = 'outside';
     state.player.x = -80;
     state.player.y = 0; // Just outside the door
+    
+    // Move spirit outside too
+    state.spirit.x = -80;
+    state.spirit.y = -80;
+    state.spirit.isWalking = false;
   }
 
   // Camera follow
@@ -266,8 +283,8 @@ export const updateGame = (state: GameState, deltaTime: number) => {
         let newCatX = obj.x + obj.dx! * timeScale;
         let newCatY = obj.y + obj.dy! * timeScale;
         
-        const roomWidth = 280;
-        const roomHeight = 220;
+        const roomWidth = 480;
+        const roomHeight = 380;
         if (newCatX < -roomWidth / 2 || newCatX > roomWidth / 2) {
           obj.dx = -obj.dx!;
           newCatX = obj.x;

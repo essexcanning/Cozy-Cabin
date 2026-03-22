@@ -5,6 +5,7 @@ import { User, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface CharacterCustomizationProps {
   onComplete: (customization: any) => void;
+  onBack?: () => void;
   initialData?: any;
 }
 
@@ -16,7 +17,7 @@ const EYE_COLORS = ['#3e2723', '#212121', '#1565c0', '#2e7d32', '#5d4037'];
 const ACCESSORIES = ['none', 'glasses', 'hat', 'scarf'];
 const FACIAL_FEATURES = ['none', 'beard', 'freckles', 'blush'];
 
-export const CharacterCustomization: React.FC<CharacterCustomizationProps> = ({ onComplete, initialData }) => {
+export const CharacterCustomization: React.FC<CharacterCustomizationProps> = ({ onComplete, onBack, initialData }) => {
   const [gender, setGender] = useState(initialData?.gender || 'non-binary');
   const [hairStyle, setHairStyle] = useState(initialData?.hairStyle || 'short');
   const [hairColor, setHairColor] = useState(initialData?.hairColor || HAIR_COLORS[0]);
@@ -136,13 +137,24 @@ export const CharacterCustomization: React.FC<CharacterCustomizationProps> = ({ 
         <OptionRow label="Facial Features" options={FACIAL_FEATURES} current={facialFeature} setter={setFacialFeature} />
         <OptionRow label="Accessories" options={ACCESSORIES} current={accessory} setter={setAccessory} />
 
-        <button
-          onClick={handleComplete}
-          className="w-full mt-8 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2"
-        >
-          <Check className="w-5 h-5" />
-          Finalize Character
-        </button>
+        <div className="flex gap-4 mt-8">
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="flex-1 bg-stone-800 hover:bg-stone-700 text-stone-300 font-bold py-3 rounded-xl transition-all border border-stone-700 flex items-center justify-center gap-2"
+            >
+              <ChevronLeft className="w-5 h-5" />
+              Back
+            </button>
+          )}
+          <button
+            onClick={handleComplete}
+            className="flex-[2] bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2"
+          >
+            <Check className="w-5 h-5" />
+            Finalize Character
+          </button>
+        </div>
       </div>
     </div>
   );

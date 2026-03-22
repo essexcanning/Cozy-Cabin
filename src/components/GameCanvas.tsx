@@ -9,10 +9,17 @@ import { GoogleGenAI } from '@google/genai';
 import { CharacterCustomization } from './CharacterCustomization';
 import { motion, AnimatePresence } from 'motion/react';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
 import { handleFirestoreError, OperationType } from '../utils/errorHandling';
 import { useLuffa } from '../contexts/LuffaContext';
+
+declare global {
+  interface Window {
+    aistudio: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    };
+  }
+}
 
 export default function GameCanvas({ worldId }: { worldId: string }) {
   const { isLuffa, sendLuffaNotification, minimizeApp, edsBalance, sendTransaction, refreshBalance } = useLuffa();
@@ -29,11 +36,18 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
   const [isEaselOpen, setIsEaselOpen] = useState(false);
   const [easelPrompt, setEaselPrompt] = useState('');
   const [isEaselLoading, setIsEaselLoading] = useState(false);
+  const [isProjectorOpen, setIsProjectorOpen] = useState(false);
+  const [projectorPrompt, setProjectorPrompt] = useState('');
+  const [isProjectorLoading, setIsProjectorLoading] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(true);
   const [coachMessage, setCoachMessage] = useState<string>("Hello! I'm your Cozy Coach. Let me look at your tasks...");
   const [isCoachLoading, setIsCoachLoading] = useState(false);
   const [particles, setParticles] = useState<{x: number, y: number, id: number}[]>([]);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
   
+  const [videoObjectUrl, setVideoObjectUrl] = useState<string | null>(null);
+
   const [sharedState, setSharedState] = useState({
     wood: 0,
     cozyCoins: 0,
@@ -44,7 +58,9 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
     ],
     purchasedItems: [] as string[],
     lastInteractionAt: Date.now(),
-    dateNight: null as { active: boolean, prompt: string } | null
+    dateNight: null as { active: boolean, prompt: string } | null,
+    projectorVideo: null as string | null,
+    heartsSent: 0
   });
 
   const [inviteCode, setInviteCode] = useState<string | null>(null);
@@ -54,6 +70,58 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
   const lastSyncDataRef = useRef<string>('');
   const woodBufferRef = useRef<number>(0);
   const lastWoodSyncRef = useRef<number>(0);
+
+  useEffect(() => {
+    const checkApiKey = async () => {
+      if (window.aistudio) {
+        const selected = await window.aistudio.hasSelectedApiKey();
+        setHasApiKey(selected);
+      }
+    };
+    checkApiKey();
+  }, [isProjectorOpen]);
+
+  useEffect(() => {
+    if (sharedState.projectorVideo) {
+      const fetchVideo = async () => {
+        try {
+          const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY || '';
+          const response = await fetch(sharedState.projectorVideo!, {
+            method: 'GET',
+            headers: {
+              'x-goog-api-key': apiKey
+            }
+          });
+          if (response.ok) {
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            setVideoObjectUrl(url);
+            // Ensure video starts playing when URL is set
+            if (videoRef.current) {
+              videoRef.current.load();
+              videoRef.current.play().catch(e => console.warn("Video play failed:", e));
+            }
+          }
+        } catch (error) {
+          console.error("Failed to fetch projector video:", error);
+        }
+      };
+      fetchVideo();
+    } else {
+      setVideoObjectUrl(null);
+    }
+    
+    return () => {
+      if (videoObjectUrl) {
+        URL.revokeObjectURL(videoObjectUrl);
+      }
+    };
+  }, [sharedState.projectorVideo]);
+
+  // Component Safety Check
+  if (!gameState || !gameState.player || !gameState.objects) {
+    return <div className="w-full h-screen flex items-center justify-center bg-stone-900 text-white">Loading Assets...</div>;
+  }
 
   useEffect(() => {
     if (!worldId) return;
@@ -90,7 +158,7 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
           const existingCat = gameState.objects.inside.find(obj => obj.type === 'cat');
           
           const newInsideObjects = gameState.objects.inside.filter(obj => 
-            !['cat', 'luxury_rug', 'high_end_lamp', 'gramophone', 'potted_plant', 'wall_art', 'painting'].includes(obj.type)
+            !['cat', 'luxury_rug', 'high_end_lamp', 'gramophone', 'potted_plant', 'wall_art', 'painting', 'magic_projector'].includes(obj.type)
           );
           
           if (shared.purchasedItems?.includes('cat')) {
@@ -118,6 +186,9 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
           if (shared.purchasedItems?.includes('magic_easel')) {
             newInsideObjects.push({ id: 'magic_easel', x: 60, y: 40, width: 30, height: 40, type: 'magic_easel', solid: true, interactable: true });
           }
+          if (shared.purchasedItems?.includes('magic_projector')) {
+            newInsideObjects.push({ id: 'magic_projector', x: -60, y: 40, width: 30, height: 40, type: 'magic_projector', solid: true, interactable: true });
+          }
 
           // Re-add paintings (they are handled by a separate listener now)
           const paintings = gameState.objects.inside.filter(obj => obj.type === 'painting');
@@ -137,16 +208,45 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
               ],
               purchasedItems: [],
               lastInteractionAt: Date.now(),
-              dateNight: null
+              dateNight: null,
+              projectorVideo: null,
+              heartsSent: 0
             }
           }).catch(err => {
-            if (err.message?.includes('Quota exceeded')) {
+            if (err instanceof Error && err.message?.includes('Quota exceeded')) {
               setQuotaExceeded(true);
-            } else if (err.code === 'permission-denied' || err.message?.includes('insufficient permissions')) {
+            } else {
               handleFirestoreError(err, OperationType.WRITE, `worlds/${worldId}`);
             }
           });
         }
+      } else {
+        // Document doesn't exist, initialize it (especially for demo worlds)
+        setDoc(worldRef, {
+          inviteCode: worldId === 'local_demo_world' ? 'DEMO123' : 'WORLD' + Math.floor(Math.random() * 1000),
+          ownerId: auth.currentUser?.uid || 'system',
+          createdAt: serverTimestamp(),
+          shared: {
+            wood: 0,
+            cozyCoins: 0,
+            tasks: [
+              { id: 't1', text: 'Send a sweet message', completed: false },
+              { id: 't2', text: 'Plan a weekend walk', completed: false },
+              { id: 't3', text: 'Complete a joint check-in', completed: false }
+            ],
+            purchasedItems: [],
+            lastInteractionAt: Date.now(),
+            dateNight: null,
+            projectorVideo: null,
+            heartsSent: 0
+          }
+        }).catch(err => {
+          if (err instanceof Error && err.message?.includes('Quota exceeded')) {
+            setQuotaExceeded(true);
+          } else {
+            handleFirestoreError(err, OperationType.WRITE, `worlds/${worldId}`);
+          }
+        });
       }
     }, (err) => {
       if (err.message?.includes('Quota exceeded')) {
@@ -267,18 +367,83 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
     return () => unsubscribe();
   }, [worldId, gameState]);
 
+  const handleInteract = () => {
+    if (gameState.ui.chestOpen || gameState.ui.tasksOpen || gameState.ui.coachOpen || gameState.ui.dateNightOpen || gameState.ui.vaultOpen || gameState.ui.projectorOpen) {
+      return;
+    }
+
+    if (gameState.interactionTarget) {
+      playSound('interact');
+      const target = gameState.interactionTarget;
+      if (target.type === 'tree') {
+        // Local update for responsiveness
+        setSharedState(prev => ({ ...prev, wood: prev.wood + 1 }));
+        gameState.shared.wood += 1;
+        woodBufferRef.current += 1;
+
+        // Throttled sync to Firestore (every 5 seconds or when buffer is large)
+        const now = Date.now();
+        if (now - lastWoodSyncRef.current > 5000 || woodBufferRef.current >= 5) {
+          const amount = woodBufferRef.current;
+          woodBufferRef.current = 0;
+          lastWoodSyncRef.current = now;
+          
+          updateDoc(doc(db, 'worlds', worldId), { 
+            'shared.wood': increment(amount) 
+          }).catch(err => {
+            if (err instanceof Error && err.message?.includes('Quota exceeded')) {
+              setQuotaExceeded(true);
+            } else {
+              handleFirestoreError(err, OperationType.UPDATE, `worlds/${worldId}`);
+            }
+          });
+        }
+      } else if (target.type === 'chest') {
+        setIsChestOpen(true);
+        gameState.ui.chestOpen = true;
+      } else if (target.type === 'vault') {
+        setIsVaultOpen(true);
+        gameState.ui.vaultOpen = true;
+      } else if (target.type === 'mailbox') {
+        setIsTasksOpen(true);
+        gameState.ui.tasksOpen = true;
+      } else if (target.type === 'mirror') {
+        setIsCoachOpen(true);
+        gameState.ui.coachOpen = true;
+        generateCoachAdvice();
+      } else if (target.type === 'magic_easel') {
+        setIsEaselOpen(true);
+        gameState.ui.coachOpen = true; // Use this to block movement
+      } else if (target.type === 'magic_projector') {
+        setIsProjectorOpen(true);
+        gameState.ui.projectorOpen = true;
+      } else if (target.type === 'bed') {
+        // Simple sleep effect
+        const overlay = document.getElementById('sleep-overlay');
+        if (overlay) {
+          overlay.style.opacity = '1';
+          setTimeout(() => {
+            overlay.style.opacity = '0';
+          }, 2000);
+        }
+      }
+    }
+  };
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (gameState.ui.chestOpen || gameState.ui.tasksOpen || gameState.ui.coachOpen || gameState.ui.dateNightOpen || gameState.ui.vaultOpen) {
+      if (gameState.ui.chestOpen || gameState.ui.tasksOpen || gameState.ui.coachOpen || gameState.ui.dateNightOpen || gameState.ui.vaultOpen || gameState.ui.projectorOpen) {
         if (e.key === 'Escape') {
           setIsChestOpen(false);
           setIsTasksOpen(false);
           setIsCoachOpen(false);
           setIsVaultOpen(false);
+          setIsProjectorOpen(false);
           gameState.ui.chestOpen = false;
           gameState.ui.tasksOpen = false;
           gameState.ui.coachOpen = false;
           gameState.ui.vaultOpen = false;
+          gameState.ui.projectorOpen = false;
         }
         return;
       }
@@ -287,55 +452,7 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       
       // Handle interactions
       if (e.key === 'e' || e.key === 'E') {
-        if (gameState.interactionTarget) {
-          playSound('interact');
-          const target = gameState.interactionTarget;
-          if (target.type === 'tree') {
-            // Local update for responsiveness
-            setSharedState(prev => ({ ...prev, wood: prev.wood + 1 }));
-            gameState.shared.wood += 1;
-            woodBufferRef.current += 1;
-
-            // Throttled sync to Firestore (every 5 seconds or when buffer is large)
-            const now = Date.now();
-            if (now - lastWoodSyncRef.current > 5000 || woodBufferRef.current >= 5) {
-              const amount = woodBufferRef.current;
-              woodBufferRef.current = 0;
-              lastWoodSyncRef.current = now;
-              
-              updateDoc(doc(db, 'worlds', worldId), { 
-                'shared.wood': increment(amount) 
-              }).catch(err => {
-                if (err.message?.includes('Quota exceeded')) setQuotaExceeded(true);
-              });
-            }
-          } else if (target.type === 'chest') {
-            setIsChestOpen(true);
-            gameState.ui.chestOpen = true;
-          } else if (target.type === 'vault') {
-            setIsVaultOpen(true);
-            gameState.ui.vaultOpen = true;
-          } else if (target.type === 'mailbox') {
-            setIsTasksOpen(true);
-            gameState.ui.tasksOpen = true;
-          } else if (target.type === 'mirror') {
-            setIsCoachOpen(true);
-            gameState.ui.coachOpen = true;
-            generateCoachAdvice();
-          } else if (target.type === 'magic_easel') {
-            setIsEaselOpen(true);
-            gameState.ui.coachOpen = true; // Use this to block movement
-          } else if (target.type === 'bed') {
-            // Simple sleep effect
-            const overlay = document.getElementById('sleep-overlay');
-            if (overlay) {
-              overlay.style.opacity = '1';
-              setTimeout(() => {
-                overlay.style.opacity = '0';
-              }, 2000);
-            }
-          }
-        }
+        handleInteract();
       }
     };
 
@@ -345,21 +462,38 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
 
     // Spirit Proactivity Logic
     const proactivityInterval = setInterval(() => {
-      if (gameState.scene !== 'inside') return;
-      
       const lastInteraction = sharedState.lastInteractionAt || Date.now();
       const hoursSince = (Date.now() - lastInteraction) / (1000 * 60 * 60);
       
-      if (hoursSince >= 4 && !gameState.spirit.isWalking) {
-        gameState.spirit.isWalking = true;
-        gameState.spirit.targetX = gameState.player.x + 30;
-        gameState.spirit.targetY = gameState.player.y;
-        gameState.spirit.speechBubble = "It's looking a bit chilly in here! Why not send your partner a compliment to warm things up?";
-        sendLuffaNotification("Spirit: The Cabin is getting chilly! Check the tasks board!");
+      if (!gameState.spirit.isWalking) {
+        let message = null;
         
-        setTimeout(() => {
-          gameState.spirit.speechBubble = null;
-        }, 10000);
+        if (sharedState.wood > 50 && (sharedState.heartsSent || 0) < 1) {
+          message = "You're a great lumberjack, but are you a great partner? Go send a heart!";
+        } else if (hoursSince >= 4) {
+          message = "It's looking a bit chilly in here! Why not send your partner a compliment to warm things up?";
+        } else if (sharedState.tasks.filter(t => t.completed).length >= 3) {
+          message = "You two are on fire! Keep up the great teamwork!";
+        }
+        
+        if (message) {
+          // Reset spirit position to near player if it's too far or scene changed
+          const dist = Math.sqrt(Math.pow(gameState.spirit.x - gameState.player.x, 2) + Math.pow(gameState.spirit.y - gameState.player.y, 2));
+          if (dist > 300) {
+            gameState.spirit.x = gameState.player.x - 50;
+            gameState.spirit.y = gameState.player.y - 50;
+          }
+          
+          gameState.spirit.isWalking = true;
+          gameState.spirit.targetX = gameState.player.x + 30;
+          gameState.spirit.targetY = gameState.player.y;
+          gameState.spirit.speechBubble = message;
+          sendLuffaNotification(`Spirit: ${message}`);
+          
+          setTimeout(() => {
+            gameState.spirit.speechBubble = null;
+          }, 10000);
+        }
       }
     }, 60000);
 
@@ -382,14 +516,19 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
   const startDateNight = async () => {
     setIsCoachLoading(true);
     try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const prompt = `You are a romantic relationship coach. Suggest a cozy, deep conversation prompt or a sweet, simple activity for a couple to do right now while playing a game together. Keep it under 2 sentences.`;
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: prompt,
       });
-      await updateDoc(doc(db, 'worlds', worldId), {
-        'shared.dateNight': { active: true, prompt: response.text || "Share your favorite memory together." }
-      });
+      try {
+        await updateDoc(doc(db, 'worlds', worldId), {
+          'shared.dateNight': { active: true, prompt: response.text || "Share your favorite memory together." }
+        });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `worlds/${worldId}`);
+      }
       setIsCoachOpen(false);
       gameState.ui.coachOpen = false;
     } catch (error: any) {
@@ -424,9 +563,11 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
         
         // Sync to Firebase (throttle to ~1500ms when moving, ~5000ms when idle)
         const syncInterval = gameState.player.isMoving ? 1500 : 5000;
-        if (auth.currentUser && worldId && time - lastSyncRef.current > syncInterval) {
+        const currentUid = auth.currentUser?.uid || 'guest_123';
+        
+        if (worldId && time - lastSyncRef.current > syncInterval) {
           const syncData = {
-            uid: auth.currentUser.uid,
+            uid: currentUid,
             x: Math.round(gameState.player.x / 10) * 10, // Only sync if moved at least 10 pixels
             y: Math.round(gameState.player.y / 10) * 10,
             scene: gameState.scene,
@@ -449,22 +590,25 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
             lastSyncRef.current = time;
             lastSyncDataRef.current = syncDataStr;
             
-            setDoc(doc(db, 'worlds', worldId, 'players', auth.currentUser.uid), {
-              ...syncData,
-              lastUpdated: serverTimestamp()
-            }, { merge: true }).catch(err => {
-              if (err.message?.includes('Quota exceeded')) {
-                setQuotaExceeded(true);
-                console.warn("Firestore Quota Exceeded. Sync paused.");
-              } else {
-                console.error("Sync error:", err);
-              }
-            });
+            // Only attempt to write to Firestore if we have a real user
+            if (auth.currentUser) {
+              setDoc(doc(db, 'worlds', worldId, 'players', currentUid), {
+                ...syncData,
+                lastUpdated: serverTimestamp()
+              }, { merge: true }).catch(err => {
+                if (err instanceof Error && err.message?.includes('Quota exceeded')) {
+                  setQuotaExceeded(true);
+                  console.warn("Firestore Quota Exceeded. Sync paused.");
+                } else {
+                  handleFirestoreError(err, OperationType.WRITE, `worlds/${worldId}/players/${currentUid}`);
+                }
+              });
+            }
           }
         }
 
         // Render
-        renderGame(ctx, gameState, canvas.width, canvas.height);
+        renderGame(ctx, gameState, canvas.width, canvas.height, videoRef.current);
       }
       lastTimeRef.current = time;
       requestRef.current = requestAnimationFrame(loop);
@@ -492,9 +636,13 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       const hash = await sendTransaction(0.1, '0x0000000000000000000000000000000000000000000000000000000000000000');
       
       // Only reset Cozy Coins after successful transaction
-      await updateDoc(doc(db, 'worlds', worldId), {
-        'shared.cozyCoins': 0
-      });
+      try {
+        await updateDoc(doc(db, 'worlds', worldId), {
+          'shared.cozyCoins': 0
+        });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `worlds/${worldId}`);
+      }
       
       setMintTxHash(hash);
       refreshBalance(); // Fetch updated EDS balance
@@ -512,6 +660,7 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
   const generateCoachAdvice = async () => {
     setIsCoachLoading(true);
     try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const completedTasks = sharedState.tasks.filter(t => t.completed).map(t => t.text);
       const prompt = `You are a warm, encouraging relationship coach. The couple has completed these tasks recently: ${completedTasks.length > 0 ? completedTasks.join(', ') : 'None yet'}. Give them a short, sweet personalized suggestion for a Date Night or connection activity (max 2 sentences).`;
       
@@ -529,10 +678,83 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
     }
   };
 
+  const handleSelectApiKey = async () => {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+      setHasApiKey(true);
+    }
+  };
+
+  const generateVideo = async () => {
+    if (!projectorPrompt.trim()) return;
+    
+    if (window.aistudio) {
+      const selected = await window.aistudio.hasSelectedApiKey();
+      if (!selected) {
+        await window.aistudio.openSelectKey();
+        setHasApiKey(true);
+      }
+    }
+
+    setIsProjectorLoading(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || process.env.GEMINI_API_KEY });
+      const prompt = `A short, cozy video loop: ${projectorPrompt}. Warm colors, soft lighting, cinematic.`;
+      
+      let operation = await ai.models.generateVideos({
+        model: 'veo-3.1-fast-generate-preview',
+        prompt: prompt,
+        config: {
+          numberOfVideos: 1,
+          resolution: '720p',
+          aspectRatio: '16:9'
+        }
+      });
+
+      setTickerMessage("Projector is warming up... (This takes a few minutes) 🎥");
+
+      // Poll for completion
+      while (!operation.done) {
+        await new Promise(resolve => setTimeout(resolve, 10000));
+        operation = await ai.operations.getVideosOperation({operation: operation});
+      }
+
+      const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+      if (downloadLink) {
+        try {
+          await updateDoc(doc(db, 'worlds', worldId), {
+            'shared.projectorVideo': downloadLink
+          });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.UPDATE, `worlds/${worldId}`);
+        }
+        playSound('pop');
+        setTickerMessage("New memory projected! 🍿");
+      }
+      
+      setIsProjectorOpen(false);
+      gameState.ui.projectorOpen = false;
+      setProjectorPrompt('');
+    } catch (error: any) {
+      console.error("Video generation error:", error);
+      if (error.message?.includes('Requested entity was not found')) {
+        setHasApiKey(false);
+        setTickerMessage("API Key error. Please re-select your key.");
+      } else if (error.message?.includes('Quota exceeded')) {
+        setQuotaExceeded(true);
+      } else {
+        setTickerMessage("The projector bulb fizzled out. Try again later.");
+      }
+    } finally {
+      setIsProjectorLoading(false);
+    }
+  };
+
   const generatePainting = async () => {
     if (!easelPrompt.trim()) return;
     setIsEaselLoading(true);
     try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const prompt = `A 2D pixel-art painting of a memory: ${easelPrompt}. Cozy, warm colors, simple shapes, 64x64 style.`;
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
@@ -579,13 +801,19 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
         const paintingId = `painting_${Date.now()}`;
         const paintingRef = doc(db, 'worlds', worldId, 'paintings', paintingId);
         
-        await setDoc(paintingRef, {
-          id: paintingId,
-          x: Math.random() * 200 - 100,
-          y: -100, // Wall position
-          data: compressedData,
-          createdAt: serverTimestamp()
-        });
+        try {
+          await setDoc(paintingRef, {
+            id: paintingId,
+            x: Math.random() * 200 - 100,
+            y: -100, // Wall position
+            data: compressedData,
+            createdAt: serverTimestamp()
+          });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, `worlds/${worldId}/paintings/${paintingId}`);
+        }
+        
+        playSound('pop');
         
         setIsEaselOpen(false);
         gameState.ui.coachOpen = false;
@@ -612,6 +840,10 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       t.id === taskId ? { ...t, completed: true } : t
     );
     
+    // Happy Dance!
+    gameState.player.isDancing = true;
+    gameState.player.danceTimer = Date.now() + 3000; // Dance for 3 seconds
+    
     // Add particles
     const newParticles = Array.from({length: 10}).map((_, i) => ({
       x: window.innerWidth / 2 + (Math.random() * 100 - 50),
@@ -624,24 +856,37 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       setParticles(prev => prev.filter(p => !newParticles.find(np => np.id === p.id)));
     }, 1000);
 
-    await updateDoc(doc(db, 'worlds', worldId), {
-      'shared.tasks': newTasks,
-      'shared.cozyCoins': sharedState.cozyCoins + 10,
-      'shared.lastInteractionAt': Date.now()
-    }).catch(err => {
-      if (err.message?.includes('Quota exceeded')) setQuotaExceeded(true);
-    });
+    try {
+      await updateDoc(doc(db, 'worlds', worldId), {
+        'shared.tasks': newTasks,
+        'shared.cozyCoins': sharedState.cozyCoins + 10,
+        'shared.lastInteractionAt': Date.now()
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message?.includes('Quota exceeded')) {
+        setQuotaExceeded(true);
+      } else {
+        handleFirestoreError(err, OperationType.UPDATE, `worlds/${worldId}`);
+      }
+    }
   };
 
   const buyItem = async (itemId: string, cost: number) => {
     if (sharedState.cozyCoins >= cost && !sharedState.purchasedItems.includes(itemId)) {
       playSound('buy');
-      await updateDoc(doc(db, 'worlds', worldId), {
-        'shared.cozyCoins': sharedState.cozyCoins - cost,
-        'shared.purchasedItems': [...sharedState.purchasedItems, itemId]
-      }).catch(err => {
-        if (err.message?.includes('Quota exceeded')) setQuotaExceeded(true);
-      });
+      try {
+        await updateDoc(doc(db, 'worlds', worldId), {
+          'shared.cozyCoins': sharedState.cozyCoins - cost,
+          'shared.purchasedItems': [...sharedState.purchasedItems, itemId]
+        });
+        playSound('pop');
+      } catch (err) {
+        if (err instanceof Error && err.message?.includes('Quota exceeded')) {
+          setQuotaExceeded(true);
+        } else {
+          handleFirestoreError(err, OperationType.UPDATE, `worlds/${worldId}`);
+        }
+      }
     }
   };
 
@@ -662,6 +907,20 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
         style={{ imageRendering: 'pixelated' }}
       />
       
+      {/* Hidden Video Element for Projector */}
+      {videoObjectUrl && (
+        <video
+          ref={videoRef}
+          src={videoObjectUrl}
+          crossOrigin="anonymous"
+          loop
+          muted
+          autoPlay
+          playsInline
+          className="hidden"
+        />
+      )}
+      
       {/* HUD Layer */}
       <motion.div 
         initial={{ x: -100, opacity: 0 }}
@@ -678,6 +937,34 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
         >
           <span className="text-yellow-400 text-xl">🪙</span> Cozy Coins: {sharedState.cozyCoins}
         </motion.div>
+        <button
+          onClick={async () => {
+            playSound('task');
+            const newParticles = Array.from({length: 5}).map((_, i) => ({
+              x: window.innerWidth / 2 + (Math.random() * 100 - 50),
+              y: window.innerHeight / 2 + (Math.random() * 100 - 50),
+              id: Date.now() + i
+            }));
+            setParticles(prev => [...prev, ...newParticles]);
+            setTimeout(() => {
+              setParticles(prev => prev.filter(p => !newParticles.find(np => np.id === p.id)));
+            }, 1000);
+            
+            if (worldId) {
+              try {
+                await updateDoc(doc(db, 'worlds', worldId), {
+                  'shared.heartsSent': increment(1),
+                  'shared.cozyCoins': increment(1)
+                });
+              } catch (err) {
+                handleFirestoreError(err, OperationType.UPDATE, `worlds/${worldId}`);
+              }
+            }
+          }}
+          className="mt-2 bg-pink-500 hover:bg-pink-600 text-white font-bold py-2 px-4 rounded-full flex items-center justify-center gap-2 transition-colors"
+        >
+          <span>❤️</span> Send Love
+        </button>
       </motion.div>
 
       {/* Heart Particles */}
@@ -771,6 +1058,62 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
           </button>
         )}
       </div>
+
+      {/* Virtual Joystick (Mobile) */}
+      <div className="absolute bottom-8 left-8 w-32 h-32 bg-white/10 rounded-full border-2 border-white/20 backdrop-blur-sm z-40 touch-none lg:hidden"
+           onTouchStart={(e) => {
+             const touch = e.touches[0];
+             const rect = (e.target as HTMLElement).getBoundingClientRect();
+             const centerX = rect.left + rect.width / 2;
+             const centerY = rect.top + rect.height / 2;
+             
+             const updateKeys = (clientX: number, clientY: number) => {
+               const dx = clientX - centerX;
+               const dy = clientY - centerY;
+               const threshold = 20;
+               
+               gameState.keys['w'] = dy < -threshold;
+               gameState.keys['s'] = dy > threshold;
+               gameState.keys['a'] = dx < -threshold;
+               gameState.keys['d'] = dx > threshold;
+             };
+             
+             updateKeys(touch.clientX, touch.clientY);
+             
+             const handleMove = (moveEvent: TouchEvent) => {
+               moveEvent.preventDefault();
+               updateKeys(moveEvent.touches[0].clientX, moveEvent.touches[0].clientY);
+             };
+             
+             const handleEnd = () => {
+               gameState.keys['w'] = false;
+               gameState.keys['s'] = false;
+               gameState.keys['a'] = false;
+               gameState.keys['d'] = false;
+               document.removeEventListener('touchmove', handleMove);
+               document.removeEventListener('touchend', handleEnd);
+             };
+             
+             document.addEventListener('touchmove', handleMove, { passive: false });
+             document.addEventListener('touchend', handleEnd);
+           }}>
+        <div className="absolute top-1/2 left-1/2 w-12 h-12 -mt-6 -ml-6 bg-white/40 rounded-full pointer-events-none"></div>
+      </div>
+
+      {/* Virtual Interact Button (Mobile) */}
+      <button 
+        className="absolute bottom-8 right-8 w-20 h-20 bg-white/10 hover:bg-white/20 rounded-full border-2 border-white/20 backdrop-blur-sm z-40 flex items-center justify-center text-3xl shadow-lg transition-colors lg:hidden active:scale-95"
+        onClick={(e) => {
+          e.preventDefault();
+          handleInteract();
+        }}
+        onTouchStart={(e) => {
+          e.preventDefault();
+          handleInteract();
+        }}
+      >
+        ✋
+      </button>
 
       {/* Tasks Menu Overlay */}
       {isTasksOpen && (
@@ -907,6 +1250,7 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
                 { id: 'potted_plant', name: 'Potted Plant', cost: 15, icon: '🪴' },
                 { id: 'wall_art', name: 'Wall Art', cost: 25, icon: '🖼️' },
                 { id: 'magic_easel', name: 'Magic Easel', cost: 50, icon: '🎨' },
+                { id: 'magic_projector', name: 'Magic Projector', cost: 100, icon: '📽️' },
                 { id: 'outfit_overalls', name: 'Overalls', cost: 15, icon: '👖' },
                 { id: 'outfit_dress', name: 'Sundress', cost: 15, icon: '👗' },
                 { id: 'outfit_suit', name: 'Sharp Suit', cost: 25, icon: '👔' },
@@ -1015,6 +1359,74 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
                   gameState.ui.coachOpen = false;
                 }}
                 disabled={isEaselLoading}
+              >
+                Cancel
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Magic Projector Modal */}
+      {isProjectorOpen && (
+        <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-stone-900 p-8 rounded-2xl border-4 border-indigo-500 shadow-[0_0_50px_rgba(99,102,241,0.3)] w-[500px]"
+          >
+            <h2 className="text-3xl font-serif font-bold text-indigo-300 mb-6 flex items-center gap-3">
+              <span>📽️</span> Magic Projector
+            </h2>
+            <p className="text-stone-400 mb-4 italic">"What memory should we project into the cabin?"</p>
+            
+            <textarea
+              className="w-full p-4 rounded-xl border-2 border-indigo-900 bg-stone-800 text-indigo-100 focus:border-indigo-500 outline-none min-h-[120px] mb-6"
+              placeholder="Describe a cozy scene (e.g., 'A golden retriever playing in the snow', 'Rain falling on a cabin window')..."
+              value={projectorPrompt}
+              onChange={(e) => setProjectorPrompt(e.target.value)}
+              disabled={isProjectorLoading || !hasApiKey}
+            />
+
+            {!hasApiKey && (
+              <div className="mb-6 p-4 bg-indigo-900/50 border border-indigo-500 rounded-xl text-indigo-200 text-sm">
+                <p className="mb-3">A paid Google Cloud API key is required for video generation.</p>
+                <button 
+                  onClick={handleSelectApiKey}
+                  className="w-full bg-indigo-500 hover:bg-indigo-400 text-white py-2 rounded-lg font-bold transition-colors"
+                >
+                  Select API Key
+                </button>
+                <p className="mt-2 text-[10px] opacity-70">
+                  See <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="underline">billing documentation</a> for details.
+                </p>
+              </div>
+            )}
+
+            <div className="flex gap-4">
+              <button 
+                className="flex-1 bg-indigo-600 text-white p-4 rounded-xl hover:bg-indigo-500 font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                onClick={generateVideo}
+                disabled={isProjectorLoading || !projectorPrompt.trim() || !hasApiKey}
+              >
+                {isProjectorLoading ? (
+                  <>
+                    <span className="animate-spin">🌀</span> Warming up...
+                  </>
+                ) : (
+                  <>
+                    <span>✨</span> Project Memory
+                  </>
+                )}
+              </button>
+              
+              <button 
+                className="bg-stone-700 text-stone-300 px-6 rounded-xl hover:bg-stone-600 font-bold transition-colors"
+                onClick={() => {
+                  setIsProjectorOpen(false);
+                  gameState.ui.projectorOpen = false;
+                }}
+                disabled={isProjectorLoading}
               >
                 Cancel
               </button>

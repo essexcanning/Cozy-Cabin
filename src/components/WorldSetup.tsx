@@ -39,34 +39,69 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
 
           if (!worldSnap.exists()) {
             // Create world
-            await setDoc(worldRef, {
-              inviteCode: 'LUFFA', // Not used for Luffa
-              ownerId: auth.currentUser.uid,
-              createdAt: serverTimestamp(),
-              shared: {
-                wood: 0,
-                cozyCoins: 0,
-                tasks: [
-                  { id: 't1', text: 'Send a sweet message', completed: false },
-                  { id: 't2', text: 'Plan a weekend walk', completed: false },
-                  { id: 't3', text: 'Complete a joint check-in', completed: false }
-                ],
-                purchasedItems: [],
-                dateNight: null
-              }
-            });
+            try {
+              await setDoc(worldRef, {
+                inviteCode: 'LUFFA', // Not used for Luffa
+                ownerId: auth.currentUser.uid,
+                createdAt: serverTimestamp(),
+                shared: {
+                  wood: 0,
+                  cozyCoins: 0,
+                  heartsSent: 0,
+                  tasks: [
+                    { id: 't1', text: 'Send a sweet message', completed: false },
+                    { id: 't2', text: 'Plan a weekend walk', completed: false },
+                    { id: 't3', text: 'Complete a joint check-in', completed: false }
+                  ],
+                  purchasedItems: [],
+                  dateNight: null
+                }
+              });
+            } catch (err) {
+              handleFirestoreError(err, OperationType.WRITE, `worlds/${worldId}`);
+            }
           } else {
             // Join world
             const worldData = worldSnap.data();
             if (!worldData.partnerId && worldData.ownerId !== auth.currentUser.uid) {
-              await setDoc(worldRef, {
-                partnerId: auth.currentUser.uid
-              }, { merge: true });
+              try {
+                await setDoc(worldRef, {
+                  partnerId: auth.currentUser.uid
+                }, { merge: true });
+              } catch (err) {
+                handleFirestoreError(err, OperationType.WRITE, `worlds/${worldId}`);
+              }
             }
           }
 
-          setPendingWorldId(worldId);
-          setStep('customize');
+          // Auto-complete user profile for Luffa users to skip customization
+          const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+          if (!userDoc.exists() || !userDoc.data().hairColor) {
+            try {
+              await setDoc(doc(db, 'users', auth.currentUser.uid), {
+                uid: auth.currentUser.uid,
+                displayName: luffaUser.name || 'Player',
+                worldId: worldId,
+                hairColor: '#4a3018',
+                shirtColor: '#2b5a3f',
+                pantsColor: '#1a1a1a',
+                skinColor: '#f1c27d'
+              }, { merge: true });
+            } catch (err) {
+              handleFirestoreError(err, OperationType.WRITE, `users/${auth.currentUser.uid}`);
+            }
+          } else {
+            try {
+              await setDoc(doc(db, 'users', auth.currentUser.uid), {
+                worldId: worldId,
+                displayName: luffaUser.name || userDoc.data().displayName || 'Player'
+              }, { merge: true });
+            } catch (err) {
+              handleFirestoreError(err, OperationType.WRITE, `users/${auth.currentUser.uid}`);
+            }
+          }
+
+          onWorldJoined(worldId);
         } catch (err: any) {
           console.error("Luffa world setup error:", err);
           setError('Failed to setup Luffa world.');
@@ -93,22 +128,27 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
       const code = generateInviteCode();
       
       // Create world
-      await setDoc(doc(db, 'worlds', newWorldId), {
-        inviteCode: code,
-        ownerId: auth.currentUser.uid,
-        createdAt: serverTimestamp(),
-        shared: {
-          wood: 0,
-          cozyCoins: 0,
-          tasks: [
-            { id: 't1', text: 'Send a sweet message', completed: false },
-            { id: 't2', text: 'Plan a weekend walk', completed: false },
-            { id: 't3', text: 'Complete a joint check-in', completed: false }
-          ],
-          purchasedItems: [],
-          dateNight: null
-        }
-      });
+      try {
+        await setDoc(doc(db, 'worlds', newWorldId), {
+          inviteCode: code,
+          ownerId: auth.currentUser.uid,
+          createdAt: serverTimestamp(),
+          shared: {
+            wood: 0,
+            cozyCoins: 0,
+            heartsSent: 0,
+            tasks: [
+              { id: 't1', text: 'Send a sweet message', completed: false },
+              { id: 't2', text: 'Plan a weekend walk', completed: false },
+              { id: 't3', text: 'Complete a joint check-in', completed: false }
+            ],
+            purchasedItems: [],
+            dateNight: null
+          }
+        });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `worlds/${newWorldId}`);
+      }
 
       setPendingWorldId(newWorldId);
       setStep('customize');
@@ -168,11 +208,8 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
           await setDoc(doc(db, 'worlds', worldId), {
             partnerId: auth.currentUser.uid
           }, { merge: true });
-        } catch (err: any) {
-          if (err.code === 'permission-denied' || err.message?.includes('insufficient permissions')) {
-            handleFirestoreError(err, OperationType.WRITE, `worlds/${worldId}`);
-          }
-          throw err;
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, `worlds/${worldId}`);
         }
       }
 
@@ -196,13 +233,17 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
     
     try {
       // Update user profile with worldId AND customization
-      await setDoc(doc(db, 'users', auth.currentUser.uid), {
-        uid: auth.currentUser.uid,
-        displayName: auth.currentUser.displayName || 'Player',
-        email: auth.currentUser.email,
-        worldId: pendingWorldId,
-        ...customization
-      }, { merge: true });
+      try {
+        await setDoc(doc(db, 'users', auth.currentUser.uid), {
+          uid: auth.currentUser.uid,
+          displayName: auth.currentUser.displayName || 'Player',
+          email: auth.currentUser.email,
+          worldId: pendingWorldId,
+          ...customization
+        }, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `users/${auth.currentUser.uid}`);
+      }
 
       onWorldJoined(pendingWorldId);
     } catch (err: any) {
@@ -219,92 +260,110 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
   if (step === 'customize') {
     return (
       <div className="min-h-screen bg-stone-950 flex items-center justify-center p-4">
-        <CharacterCustomization onComplete={handleCustomizationComplete} />
+        <CharacterCustomization 
+          onComplete={handleCustomizationComplete} 
+          onBack={() => setStep('choose')}
+        />
       </div>
     );
   }
 
   if (isLuffa) {
     return (
-      <div className="min-h-screen bg-stone-900 flex items-center justify-center p-4">
-        <div className="text-stone-400">Setting up your Luffa world...</div>
+      <div className="min-h-screen bg-stone-950 flex flex-col items-center justify-center p-4">
+        <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <div className="text-stone-400 font-medium animate-pulse">Setting up your Luffa world...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-stone-900 flex items-center justify-center p-4">
-      <div className="bg-stone-800 p-8 rounded-2xl shadow-xl max-w-md w-full border border-stone-700">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-2xl font-bold text-stone-100">Your World</h1>
-          <button 
-            onClick={() => auth.signOut()}
-            className="text-stone-400 hover:text-stone-200 transition-colors"
-            title="Sign Out"
-          >
-            <LogOut className="w-5 h-5" />
-          </button>
-        </div>
-
-        {error && (
-          <div className="bg-red-900/50 border border-red-500/50 text-red-200 p-3 rounded-lg mb-6 text-sm">
-            {error}
-          </div>
-        )}
-
-        <div className="space-y-6">
-          <div className="bg-stone-900/50 p-6 rounded-xl border border-stone-700">
-            <h2 className="text-lg font-medium text-stone-200 mb-2 flex items-center gap-2">
-              <Home className="w-5 h-5" />
-              Create New World
-            </h2>
-            <p className="text-stone-400 text-sm mb-4">
-              Start a fresh world and invite your partner to join you.
+    <div className="min-h-screen bg-stone-950 flex items-center justify-center p-6 font-sans">
+      <div className="max-w-4xl w-full">
+        <div className="flex flex-col md:flex-row gap-8 items-stretch">
+          {/* Left Side: Branding/Intro */}
+          <div className="flex-1 flex flex-col justify-center space-y-6 p-4">
+            <div className="text-6xl mb-2">🪵</div>
+            <h1 className="text-5xl font-bold text-white tracking-tight leading-none">
+              Welcome to <br />
+              <span className="text-emerald-500">Cozy Cabin</span>
+            </h1>
+            <p className="text-stone-400 text-lg max-w-sm">
+              A shared space for you and your partner to build, grow, and remember together.
             </p>
-            <button
-              onClick={handleCreateWorld}
-              disabled={loading}
-              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
-            >
-              {loading ? 'Creating...' : 'Create World'}
-            </button>
-          </div>
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-stone-700"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-stone-800 text-stone-500">OR</span>
-            </div>
-          </div>
-
-          <form onSubmit={handleJoinWorld} className="bg-stone-900/50 p-6 rounded-xl border border-stone-700">
-            <h2 className="text-lg font-medium text-stone-200 mb-2 flex items-center gap-2">
-              <Users className="w-5 h-5" />
-              Join Partner's World
-            </h2>
-            <p className="text-stone-400 text-sm mb-4">
-              Enter the 6-character invite code from your partner.
-            </p>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={inviteCode}
-                onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-                placeholder="e.g. A1B2C3"
-                maxLength={6}
-                className="flex-1 bg-stone-800 border border-stone-600 text-stone-100 px-4 py-2 rounded-lg focus:outline-none focus:border-emerald-500 uppercase font-mono"
-              />
-              <button
-                type="submit"
-                disabled={loading || inviteCode.length !== 6}
-                className="bg-stone-700 hover:bg-stone-600 text-white px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
+            
+            <div className="pt-8">
+              <button 
+                onClick={() => auth.signOut()}
+                className="flex items-center gap-2 text-stone-500 hover:text-stone-300 transition-colors text-sm font-medium uppercase tracking-widest"
               >
-                Join
+                <LogOut className="w-4 h-4" />
+                Sign Out
               </button>
             </div>
-          </form>
+          </div>
+
+          {/* Right Side: Options */}
+          <div className="flex-1 space-y-6">
+            {error && (
+              <div className="bg-red-900/30 border border-red-500/50 text-red-200 p-4 rounded-xl text-sm animate-shake">
+                {error}
+              </div>
+            )}
+
+            {/* Create Option */}
+            <div className="group bg-stone-900 border border-stone-800 p-8 rounded-3xl hover:border-emerald-500/50 transition-all duration-300 shadow-2xl">
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-3 bg-emerald-500/10 rounded-2xl text-emerald-500">
+                  <Home className="w-6 h-6" />
+                </div>
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-2">Start a New Journey</h2>
+              <p className="text-stone-400 text-sm mb-6">
+                Create a fresh world and get an invite code to share with your partner.
+              </p>
+              <button
+                onClick={handleCreateWorld}
+                disabled={loading}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-4 rounded-2xl font-bold transition-all transform group-hover:scale-[1.02] disabled:opacity-50 shadow-lg shadow-emerald-900/20"
+              >
+                {loading ? 'Creating...' : 'Launch New World'}
+              </button>
+            </div>
+
+            {/* Join Option */}
+            <div className="group bg-stone-900 border border-stone-800 p-8 rounded-3xl hover:border-indigo-500/50 transition-all duration-300 shadow-2xl">
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-500">
+                  <Users className="w-6 h-6" />
+                </div>
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-2">Join Your Partner</h2>
+              <p className="text-stone-400 text-sm mb-6">
+                Already have an invite code? Enter it below to enter your shared cabin.
+              </p>
+              
+              <form onSubmit={handleJoinWorld} className="space-y-4">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                    placeholder="ENTER INVITE CODE"
+                    maxLength={6}
+                    className="w-full bg-stone-950 border border-stone-800 text-white px-6 py-4 rounded-2xl focus:outline-none focus:border-indigo-500 uppercase font-mono text-center text-xl tracking-[0.2em] transition-colors"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading || inviteCode.length !== 6}
+                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-4 rounded-2xl font-bold transition-all transform group-hover:scale-[1.02] disabled:opacity-50 shadow-lg shadow-indigo-900/20"
+                >
+                  {loading ? 'Joining...' : 'Enter World'}
+                </button>
+              </form>
+            </div>
+          </div>
         </div>
       </div>
     </div>
