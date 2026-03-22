@@ -142,6 +142,12 @@ export default function App() {
       <GameErrorBoundary>
         <GameCanvas worldId={finalWorldId} />
       </GameErrorBoundary>
+      <button 
+        id="payBtn"
+        className="absolute bottom-4 right-4 bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-xl shadow-lg font-medium transition-colors z-50"
+      >
+        Go to Pay
+      </button>
     </main>
   );
 }

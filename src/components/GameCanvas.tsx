@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from 'motion/react';
 
 import { handleFirestoreError, OperationType } from '../utils/errorHandling';
 import { useLuffa } from '../contexts/LuffaContext';
+import { generateBearMessage } from '../services/geminiService';
 
 declare global {
   interface Window {
@@ -461,38 +462,33 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
     };
 
     // Spirit Proactivity Logic
-    const proactivityInterval = setInterval(() => {
-      const lastInteraction = sharedState.lastInteractionAt || Date.now();
-      const hoursSince = (Date.now() - lastInteraction) / (1000 * 60 * 60);
-      
-      if (!gameState.spirit.isWalking) {
-        let message = null;
+    const proactivityInterval = setInterval(async () => {
+      if (!gameState.spirit.isWalking && !gameState.spirit.speechBubble && !(gameState.spirit as any).isThinking) {
+        (gameState.spirit as any).isThinking = true;
         
-        if (sharedState.wood > 50 && (sharedState.heartsSent || 0) < 1) {
-          message = "You're a great lumberjack, but are you a great partner? Go send a heart!";
-        } else if (hoursSince >= 4) {
-          message = "It's looking a bit chilly in here! Why not send your partner a compliment to warm things up?";
-        } else if (sharedState.tasks.filter(t => t.completed).length >= 3) {
-          message = "You two are on fire! Keep up the great teamwork!";
-        }
-        
-        if (message) {
-          // Reset spirit position to near player if it's too far or scene changed
-          const dist = Math.sqrt(Math.pow(gameState.spirit.x - gameState.player.x, 2) + Math.pow(gameState.spirit.y - gameState.player.y, 2));
-          if (dist > 300) {
-            gameState.spirit.x = gameState.player.x - 50;
-            gameState.spirit.y = gameState.player.y - 50;
+        try {
+          const message = await generateBearMessage(sharedState);
+          
+          if (message) {
+            // Reset spirit position to near player if it's too far or scene changed
+            const dist = Math.sqrt(Math.pow(gameState.spirit.x - gameState.player.x, 2) + Math.pow(gameState.spirit.y - gameState.player.y, 2));
+            if (dist > 300) {
+              gameState.spirit.x = gameState.player.x - 50;
+              gameState.spirit.y = gameState.player.y - 50;
+            }
+            
+            gameState.spirit.isWalking = true;
+            gameState.spirit.targetX = gameState.player.x + 30;
+            gameState.spirit.targetY = gameState.player.y;
+            gameState.spirit.speechBubble = message;
+            sendLuffaNotification(`Cozy Bear: ${message}`);
+            
+            setTimeout(() => {
+              gameState.spirit.speechBubble = null;
+            }, 10000);
           }
-          
-          gameState.spirit.isWalking = true;
-          gameState.spirit.targetX = gameState.player.x + 30;
-          gameState.spirit.targetY = gameState.player.y;
-          gameState.spirit.speechBubble = message;
-          sendLuffaNotification(`Spirit: ${message}`);
-          
-          setTimeout(() => {
-            gameState.spirit.speechBubble = null;
-          }, 10000);
+        } finally {
+          (gameState.spirit as any).isThinking = false;
         }
       }
     }, 60000);

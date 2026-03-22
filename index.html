@@ -7,6 +7,25 @@
   </head>
   <body>
     <div id="root"></div>
+    <script type="text/javascript" src="https://tencentcloud.github.io/tcmpp-demo-miniprogram/jssdk/tcmpp-jssdk-1.0.0.js"></script>
+    <script>
+      // go to pay Page from click in H5 Page
+      document.addEventListener('DOMContentLoaded', function() {
+        var payBtn = document.getElementById("payBtn");
+        if (payBtn) {
+          payBtn.onclick = function(e) {
+            wx.miniProgram.navigateTo({ url : "/pages/pay/pay" });
+          };
+        } else {
+          // Fallback for dynamically rendered buttons
+          document.addEventListener('click', function(e) {
+            if (e.target && e.target.id === 'payBtn') {
+              wx.miniProgram.navigateTo({ url : "/pages/pay/pay" });
+            }
+          });
+        }
+      });
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

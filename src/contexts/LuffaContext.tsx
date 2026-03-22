@@ -42,6 +42,21 @@ export const LuffaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [debugStatus, setDebugStatus] = useState<string>('Initializing...');
   const pendingTx = useRef<{ resolve: (hash: string) => void; reject: (err: any) => void } | null>(null);
 
+  const sendToLuffa = (message: any) => {
+    const w = window as any;
+    console.log('[Luffa Debug] Sending message:', message);
+    if (w.wx && w.wx.miniProgram) {
+      // TCMPP / WeChat Mini Program
+      w.wx.miniProgram.postMessage({ data: message });
+      // Also try sendWebviewEvent just in case it's a custom extension
+      if (w.wx.miniProgram.sendWebviewEvent) {
+        w.wx.miniProgram.sendWebviewEvent(message);
+      }
+    }
+    // Always fallback to iframe postMessage for local testing or if Luffa uses iframe
+    window.parent.postMessage(message, '*');
+  };
+
   const forceStart = () => {
     console.log('[Luffa Debug] Force Start triggered.');
     setDebugStatus('Force Start Active');
@@ -54,19 +69,28 @@ export const LuffaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // URL Detection: Master Override
     const urlParams = new URLSearchParams(window.location.search);
     const isLuffaUrl = urlParams.get('platform') === 'luffa';
+    
+    // Check if user info is passed in URL
+    const urlUserId = urlParams.get('userId') || urlParams.get('user_id');
+    const urlPartnerId = urlParams.get('partnerId') || urlParams.get('partner_id');
+    const urlName = urlParams.get('name') || urlParams.get('userName');
 
-    if (isLuffaUrl) {
-      console.log('[Luffa Debug] URL Override detected (platform=luffa)');
+    if (isLuffaUrl || urlUserId) {
+      console.log('[Luffa Debug] URL Override detected (platform=luffa or user info present)');
       setIsLuffa(true);
-      setLuffaUser({ id: 'luffa_guest_user', partnerId: 'luffa_guest_partner', name: 'Luffa Guest' });
+      setLuffaUser({ 
+        id: urlUserId || 'luffa_guest_user', 
+        partnerId: urlPartnerId || 'luffa_guest_partner', 
+        name: urlName || 'Luffa Guest' 
+      });
       setDebugStatus('URL Override Active');
     }
 
     // Check if running in Luffa webview or iframe
     const w = window as any;
-    const isLuffaEnv = !!w.luffa || window.parent !== window;
+    const isLuffaEnv = !!w.luffa || window.parent !== window || (w.wx && w.wx.miniProgram);
     
-    if (isLuffaEnv && !isLuffaUrl) {
+    if (isLuffaEnv && !(isLuffaUrl || urlUserId)) {
       setIsLuffa(true);
       setDebugStatus('Luffa Env Detected. Handshaking...');
       
@@ -75,7 +99,7 @@ export const LuffaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const pollHandshake = () => {
         console.log(`[Luffa Debug] Sending LUFFA_GET_APP_INFO (Attempt ${attempts + 1})`);
         setDebugStatus(`Sending LUFFA_GET_APP_INFO (Attempt ${attempts + 1})`);
-        window.parent.postMessage({ type: 'LUFFA_GET_APP_INFO' }, '*');
+        sendToLuffa({ type: 'LUFFA_GET_APP_INFO' });
         attempts++;
         if (attempts >= 20) {
           clearInterval(interval);
@@ -123,16 +147,17 @@ export const LuffaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      console.log('[Luffa Debug] Received message:', event.data);
+    const handleMessage = (eventOrData: any) => {
+      // Handle both MessageEvent (iframe) and direct data object (TCMPP onWebviewEvent)
+      const data = eventOrData.data || eventOrData;
+      console.log('[Luffa Debug] Received message:', data);
       
       // The "Force True" Hook: If the app receives any message from the parent (even a heartbeat), set Luffa Detected to TRUE.
-      if (event.data) {
+      if (data) {
         setIsLuffa(true);
-        setDebugStatus(`Message received: ${event.data.type || 'Unknown'}`);
+        setDebugStatus(`Message received: ${data.type || 'Unknown'}`);
       }
 
-      const data = event.data;
       if (!data) return;
 
       if (data.type === 'LUFFA_APP_INFO_RESULT' || data.type === 'LUFFA_APP_INFO' || data.user_id || data.luffa_user_id) {
@@ -158,12 +183,24 @@ export const LuffaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    
+    // Also listen to TCMPP webview events
+    const w = window as any;
+    if (w.wx && w.wx.miniProgram && w.wx.miniProgram.onWebviewEvent) {
+      w.wx.miniProgram.onWebviewEvent(handleMessage);
+    }
+
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      if (w.wx && w.wx.miniProgram && w.wx.miniProgram.offWebviewEvent) {
+        w.wx.miniProgram.offWebviewEvent(handleMessage);
+      }
+    };
   }, []);
 
   const refreshBalance = () => {
     if (isLuffa) {
-      window.parent.postMessage({ type: 'LUFFA_GET_BALANCE' }, '*');
+      sendToLuffa({ type: 'LUFFA_GET_BALANCE' });
     } else {
       // Mock balance for local testing
       setEdsBalance(10.5);
@@ -180,13 +217,13 @@ export const LuffaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const sendLuffaNotification = (message: string) => {
     if (isLuffa) {
-      window.parent.postMessage({ type: 'LUFFA_NOTIFICATION', message }, '*');
+      sendToLuffa({ type: 'LUFFA_NOTIFICATION', message });
     }
   };
 
   const minimizeApp = () => {
     if (isLuffa) {
-      window.parent.postMessage({ type: 'LUFFA_MINIMIZE' }, '*');
+      sendToLuffa({ type: 'LUFFA_MINIMIZE' });
     }
   };
 
@@ -199,7 +236,7 @@ export const LuffaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       
       pendingTx.current = { resolve, reject };
-      window.parent.postMessage({ type: 'LUFFA_SEND_TRANSACTION', amount, to }, '*');
+      sendToLuffa({ type: 'LUFFA_SEND_TRANSACTION', amount, to });
     });
   };
 

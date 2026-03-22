@@ -1332,32 +1332,105 @@ export const drawNPC = (ctx: CanvasRenderingContext2D, npc: any) => {
   ctx.save();
   ctx.translate(npc.x, npc.y);
 
-  // Floating effect
-  const float = Math.sin(Date.now() / 500) * 5;
-  ctx.translate(0, float);
+  // Bobbing animation for walking
+  const isWalking = npc.isWalking;
+  const bob = isWalking ? Math.sin(Date.now() / 150) * 2 : Math.sin(Date.now() / 500) * 1;
+  ctx.translate(0, bob);
 
   // Shadow
-  ctx.fillStyle = 'rgba(129, 212, 250, 0.2)';
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
   ctx.beginPath();
-  ctx.ellipse(0, 15 - float, 12, 5, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 18 - bob, 14, 5, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Spirit Body (Wispy Blue)
-  const gradient = ctx.createRadialGradient(0, 0, 2, 0, 0, 15);
-  gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
-  gradient.addColorStop(0.5, 'rgba(129, 212, 250, 0.6)');
-  gradient.addColorStop(1, 'rgba(129, 212, 250, 0)');
-  
-  ctx.fillStyle = gradient;
+  const bearColor = '#8B5A2B'; // SaddleBrown
+  const bellyColor = '#D2B48C'; // Tan
+  const innerEarColor = '#F5DEB3'; // Wheat
+  const blushColor = 'rgba(255, 105, 180, 0.5)'; // HotPink transparent
+
+  // Left Ear
+  ctx.fillStyle = bearColor;
   ctx.beginPath();
-  ctx.arc(0, 0, 15, 0, Math.PI * 2);
+  ctx.arc(-10, -12, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = innerEarColor;
+  ctx.beginPath();
+  ctx.arc(-10, -12, 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Right Ear
+  ctx.fillStyle = bearColor;
+  ctx.beginPath();
+  ctx.arc(10, -12, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = innerEarColor;
+  ctx.beginPath();
+  ctx.arc(10, -12, 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Arms
+  ctx.fillStyle = bearColor;
+  ctx.beginPath();
+  ctx.ellipse(-12, 5, 4, 8, Math.PI / 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(12, 5, 4, 8, -Math.PI / 6, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Legs
+  const legSwing = isWalking ? Math.sin(Date.now() / 150) * 3 : 0;
+  ctx.fillStyle = bearColor;
+  ctx.beginPath();
+  ctx.ellipse(-6, 15 + legSwing, 4, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(6, 15 - legSwing, 4, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Body
+  ctx.fillStyle = bearColor;
+  ctx.beginPath();
+  ctx.roundRect(-14, -8, 28, 24, 10);
+  ctx.fill();
+
+  // Belly
+  ctx.fillStyle = bellyColor;
+  ctx.beginPath();
+  ctx.ellipse(0, 8, 10, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Head
+  ctx.fillStyle = bearColor;
+  ctx.beginPath();
+  ctx.arc(0, -4, 14, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Snout
+  ctx.fillStyle = bellyColor;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 7, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Nose
+  ctx.fillStyle = '#3E2723'; // Dark brown/black
+  ctx.beginPath();
+  ctx.ellipse(0, -2, 3, 2, 0, 0, Math.PI * 2);
   ctx.fill();
 
   // Eyes
-  ctx.fillStyle = 'white';
+  ctx.fillStyle = '#3E2723';
   ctx.beginPath();
-  ctx.arc(-4, -2, 2, 0, Math.PI * 2);
-  ctx.arc(4, -2, 2, 0, Math.PI * 2);
+  ctx.arc(-5, -5, 1.5, 0, Math.PI * 2);
+  ctx.arc(5, -5, 1.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Blush
+  ctx.fillStyle = blushColor;
+  ctx.beginPath();
+  ctx.ellipse(-8, -1, 3, 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(8, -1, 3, 2, 0, 0, Math.PI * 2);
   ctx.fill();
 
   // Speech Bubble
