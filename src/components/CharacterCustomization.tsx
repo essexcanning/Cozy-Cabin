@@ -25,6 +25,7 @@ export const CharacterCustomization: React.FC<CharacterCustomizationProps> = ({ 
   const [eyeColor, setEyeColor] = useState(initialData?.eyeColor || EYE_COLORS[0]);
   const [accessory, setAccessory] = useState(initialData?.accessory || 'none');
   const [facialFeature, setFacialFeature] = useState(initialData?.facialFeature || 'none');
+  const [displayName, setDisplayName] = useState(initialData?.displayName || '');
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [previewState] = useState<GameState>(() => {
@@ -82,7 +83,8 @@ export const CharacterCustomization: React.FC<CharacterCustomizationProps> = ({ 
       skinColor,
       eyeColor,
       accessory,
-      facialFeature
+      facialFeature,
+      displayName: displayName.trim() || 'Player'
     });
   };
 
@@ -129,6 +131,18 @@ export const CharacterCustomization: React.FC<CharacterCustomizationProps> = ({ 
       <div className="flex-1 overflow-y-auto max-h-[600px] pr-4 custom-scrollbar">
         <h2 className="text-2xl font-bold text-stone-100 mb-6">Customize Your Avatar</h2>
         
+        <div className="mb-6">
+          <label className="block text-stone-400 text-xs uppercase tracking-wider mb-2">Display Name</label>
+          <input 
+            type="text" 
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="Enter your name..."
+            maxLength={20}
+            className="w-full bg-stone-800 border border-stone-700 rounded-lg px-4 py-2 text-stone-200 focus:outline-none focus:border-emerald-500 transition-colors"
+          />
+        </div>
+
         <OptionRow label="Gender" options={GENDERS} current={gender} setter={setGender} />
         <OptionRow label="Skin Tone" options={SKIN_COLORS} current={skinColor} setter={setSkinColor} isColor />
         <OptionRow label="Hair Style" options={HAIR_STYLES} current={hairStyle} setter={setHairStyle} />

@@ -431,6 +431,47 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
     }
   };
 
+  // Luffa Notification System for Cozy Bear
+  const sharedStateRef = useRef(sharedState);
+  useEffect(() => {
+    sharedStateRef.current = sharedState;
+  }, [sharedState]);
+
+  useEffect(() => {
+    const checkAndSendNotifications = () => {
+      const state = sharedStateRef.current;
+      const now = Date.now();
+      const lastInteraction = state.lastInteractionAt || now;
+      const hoursSince = (now - lastInteraction) / (1000 * 60 * 60);
+      const hasPendingTasks = state.tasks.some(t => !t.completed);
+      
+      const lastNotificationTime = parseInt(localStorage.getItem('lastCozyBearNotification') || '0', 10);
+      const hoursSinceLastNotification = (now - lastNotificationTime) / (1000 * 60 * 60);
+
+      // Only send a notification if we haven't sent one in the last hour
+      if (hoursSinceLastNotification > 1) {
+        if (hoursSince > 4) {
+          sendLuffaNotification("Cozy Bear: It's been over 4 hours since you last interacted! Come back and spend some time together in the cabin.");
+          localStorage.setItem('lastCozyBearNotification', now.toString());
+        } else if (hasPendingTasks) {
+          sendLuffaNotification("Cozy Bear: You have pending tasks to complete! Teamwork makes the dream work.");
+          localStorage.setItem('lastCozyBearNotification', now.toString());
+        }
+      }
+    };
+
+    // Check every 5 minutes
+    const notificationInterval = setInterval(checkAndSendNotifications, 5 * 60 * 1000);
+    
+    // Initial check after 10 seconds to allow state to load
+    const initialCheck = setTimeout(checkAndSendNotifications, 10000);
+
+    return () => {
+      clearInterval(notificationInterval);
+      clearTimeout(initialCheck);
+    };
+  }, [sendLuffaNotification]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (gameState.ui.chestOpen || gameState.ui.tasksOpen || gameState.ui.coachOpen || gameState.ui.dateNightOpen || gameState.ui.vaultOpen || gameState.ui.projectorOpen) {
@@ -462,12 +503,12 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
     };
 
     // Spirit Proactivity Logic
-    const proactivityInterval = setInterval(async () => {
+    const triggerBearProactivity = async () => {
       if (!gameState.spirit.isWalking && !gameState.spirit.speechBubble && !(gameState.spirit as any).isThinking) {
         (gameState.spirit as any).isThinking = true;
         
         try {
-          const message = await generateBearMessage(sharedState);
+          const message = await generateBearMessage(sharedStateRef.current);
           
           if (message) {
             // Reset spirit position to near player if it's too far or scene changed
@@ -491,7 +532,10 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
           (gameState.spirit as any).isThinking = false;
         }
       }
-    }, 60000);
+    };
+
+    const proactivityInterval = setInterval(triggerBearProactivity, 60000);
+    const initialProactivity = setTimeout(triggerBearProactivity, 5000);
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
@@ -499,6 +543,8 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      clearInterval(proactivityInterval);
+      clearTimeout(initialProactivity);
       
       // Final sync of wood buffer if needed
       if (woodBufferRef.current > 0 && worldId) {
@@ -507,7 +553,7 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
         }).catch(() => {});
       }
     };
-  }, [worldId, gameState]);
+  }, [worldId, gameState, sendLuffaNotification]);
 
   const startDateNight = async () => {
     setIsCoachLoading(true);
@@ -554,57 +600,62 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       if (lastTimeRef.current !== undefined) {
         const deltaTime = time - lastTimeRef.current;
         
-        // Fixed time step for logic
-        updateGame(gameState, deltaTime);
-        
-        // Sync to Firebase (throttle to ~1500ms when moving, ~5000ms when idle)
-        const syncInterval = gameState.player.isMoving ? 1500 : 5000;
-        const currentUid = auth.currentUser?.uid || 'guest_123';
-        
-        if (worldId && time - lastSyncRef.current > syncInterval) {
-          const syncData = {
-            uid: currentUid,
-            x: Math.round(gameState.player.x / 10) * 10, // Only sync if moved at least 10 pixels
-            y: Math.round(gameState.player.y / 10) * 10,
-            scene: gameState.scene,
-            facing: gameState.player.facing,
-            isMoving: gameState.player.isMoving,
-            animFrame: Math.floor(gameState.player.animFrame),
-            color: gameState.player.color || '#ffb74d',
-            outfit: gameState.player.outfit || 'default',
-            gender: gameState.player.gender || 'non-binary',
-            hairStyle: gameState.player.hairStyle || 'short',
-            hairColor: gameState.player.hairColor || '#5d4037',
-            skinColor: gameState.player.skinColor || '#ffe0b2',
-            eyeColor: gameState.player.eyeColor || '#3e2723',
-            accessory: gameState.player.accessory || 'none',
-            facialFeature: gameState.player.facialFeature || 'none'
-          };
+        try {
+          // Fixed time step for logic
+          updateGame(gameState, deltaTime);
+          
+          // Sync to Firebase (throttle to ~1500ms when moving, ~5000ms when idle)
+          const syncInterval = gameState.player.isMoving ? 1500 : 5000;
+          const currentUid = auth.currentUser?.uid || 'guest_123';
+          
+          if (worldId && time - lastSyncRef.current > syncInterval) {
+            const syncData = {
+              uid: currentUid,
+              x: Math.round(gameState.player.x / 10) * 10, // Only sync if moved at least 10 pixels
+              y: Math.round(gameState.player.y / 10) * 10,
+              scene: gameState.scene,
+              facing: gameState.player.facing,
+              isMoving: gameState.player.isMoving,
+              animFrame: Math.floor(gameState.player.animFrame),
+              color: gameState.player.color || '#ffb74d',
+              outfit: gameState.player.outfit || 'default',
+              gender: gameState.player.gender || 'non-binary',
+              hairStyle: gameState.player.hairStyle || 'short',
+              hairColor: gameState.player.hairColor || '#5d4037',
+              skinColor: gameState.player.skinColor || '#ffe0b2',
+              eyeColor: gameState.player.eyeColor || '#3e2723',
+              accessory: gameState.player.accessory || 'none',
+              facialFeature: gameState.player.facialFeature || 'none'
+            };
 
-          const syncDataStr = JSON.stringify(syncData);
-          if (syncDataStr !== lastSyncDataRef.current) {
-            lastSyncRef.current = time;
-            lastSyncDataRef.current = syncDataStr;
-            
-            // Only attempt to write to Firestore if we have a real user
-            if (auth.currentUser) {
-              setDoc(doc(db, 'worlds', worldId, 'players', currentUid), {
-                ...syncData,
-                lastUpdated: serverTimestamp()
-              }, { merge: true }).catch(err => {
-                if (err instanceof Error && err.message?.includes('Quota exceeded')) {
-                  setQuotaExceeded(true);
-                  console.warn("Firestore Quota Exceeded. Sync paused.");
-                } else {
-                  handleFirestoreError(err, OperationType.WRITE, `worlds/${worldId}/players/${currentUid}`);
-                }
-              });
+            const syncDataStr = JSON.stringify(syncData);
+            if (syncDataStr !== lastSyncDataRef.current) {
+              lastSyncRef.current = time;
+              lastSyncDataRef.current = syncDataStr;
+              
+              // Only attempt to write to Firestore if we have a real user
+              if (auth.currentUser) {
+                setDoc(doc(db, 'worlds', worldId, 'players', currentUid), {
+                  ...syncData,
+                  lastUpdated: serverTimestamp()
+                }, { merge: true }).catch(err => {
+                  if (err instanceof Error && err.message?.includes('Quota exceeded')) {
+                    setQuotaExceeded(true);
+                    console.warn("Firestore Quota Exceeded. Sync paused.");
+                  } else {
+                    console.error("Firestore sync error:", err);
+                    // Don't throw handleFirestoreError here as it crashes the loop
+                  }
+                });
+              }
             }
           }
-        }
 
-        // Render
-        renderGame(ctx, gameState, canvas.width, canvas.height, videoRef.current);
+          // Render
+          renderGame(ctx, gameState, canvas.width, canvas.height, videoRef.current);
+        } catch (err) {
+          console.error('[GameCanvas] Error in game loop:', err);
+        }
       }
       lastTimeRef.current = time;
       requestRef.current = requestAnimationFrame(loop);
@@ -1056,7 +1107,7 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
       </div>
 
       {/* Virtual Joystick (Mobile) */}
-      <div className="absolute bottom-8 left-8 w-32 h-32 bg-white/10 rounded-full border-2 border-white/20 backdrop-blur-sm z-40 touch-none lg:hidden"
+      <div className="absolute bottom-24 left-8 w-32 h-32 bg-white/10 rounded-full border-2 border-white/20 backdrop-blur-sm z-40 touch-none lg:hidden"
            onTouchStart={(e) => {
              const touch = e.touches[0];
              const rect = (e.target as HTMLElement).getBoundingClientRect();
@@ -1098,7 +1149,7 @@ export default function GameCanvas({ worldId }: { worldId: string }) {
 
       {/* Virtual Interact Button (Mobile) */}
       <button 
-        className="absolute bottom-8 right-8 w-20 h-20 bg-white/10 hover:bg-white/20 rounded-full border-2 border-white/20 backdrop-blur-sm z-40 flex items-center justify-center text-3xl shadow-lg transition-colors lg:hidden active:scale-95"
+        className="absolute bottom-24 right-8 w-20 h-20 bg-white/10 hover:bg-white/20 rounded-full border-2 border-white/20 backdrop-blur-sm z-40 flex items-center justify-center text-3xl shadow-lg transition-colors lg:hidden active:scale-95"
         onClick={(e) => {
           e.preventDefault();
           handleInteract();

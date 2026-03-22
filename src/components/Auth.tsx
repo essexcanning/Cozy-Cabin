@@ -18,24 +18,35 @@ export const Auth: React.FC = () => {
 
   useEffect(() => {
     let timeout: NodeJS.Timeout;
-    if (isLoggingIn && !luffaUser) {
+    if (isLoggingIn) {
       timeout = setTimeout(() => {
         setShowForceStart(true);
-      }, 5000);
-    } else {
-      setShowForceStart(false);
+      }, 3000);
     }
     return () => clearTimeout(timeout);
-  }, [isLoggingIn, luffaUser]);
+  }, [isLoggingIn]);
 
   useEffect(() => {
     if ((isLuffa || isLuffaGuest) && luffaUser) {
       // Auto sign-in for Luffa users or guests
-      signInAnonymously(auth).catch((err) => {
-        console.error('Error signing in anonymously:', err);
-        setError('Failed to connect to Luffa. Please try again.');
+      try {
+        const authPromise = signInAnonymously(auth);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Auth request timed out (Firebase blocked by environment)')), 5000)
+        );
+
+        Promise.race([authPromise, timeoutPromise]).catch((err: any) => {
+          console.error('Firebase Auth blocked or failed:', err);
+          setError(`Firebase Auth Error: ${err.message}. Please ensure Firebase domains (googleapis.com, firebaseapp.com) are whitelisted in your Mini Program settings. Multiplayer will NOT work without this.`);
+          setIsLoggingIn(false);
+          setShowForceStart(true);
+        });
+      } catch (err: any) {
+        console.error('Synchronous Firebase Auth error:', err);
+        setError(`Sync Auth Error: ${err.message}. Your environment might not support Firebase Auth. Multiplayer will NOT work.`);
         setIsLoggingIn(false);
-      });
+        setShowForceStart(true);
+      }
     }
   }, [isLuffa, isLuffaGuest, luffaUser]);
 
@@ -56,9 +67,10 @@ export const Auth: React.FC = () => {
   const handleManualLuffaLogin = () => {
     setIsLoggingIn(true);
     signInAnonymously(auth).catch((err) => {
-      console.error('Error signing in anonymously:', err);
-      setError('Failed to connect to Luffa manually. Please try again.');
+      console.warn('Firebase Auth blocked or failed manually, proceeding with local Luffa ID:', err);
+    }).finally(() => {
       setIsLoggingIn(false);
+      forceStart();
     });
   };
 
@@ -83,7 +95,7 @@ export const Auth: React.FC = () => {
               </p>
             </div>
             
-            {showForceStart && (
+            {(showForceStart || error) && (
               <button 
                 onClick={forceStart}
                 className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-4 rounded-xl transition-all transform hover:scale-105 shadow-lg flex items-center justify-center gap-2 mt-4 animate-bounce"

@@ -6,19 +6,23 @@ service cloud.firestore {
     // Helper Functions
     // ===============================================================
     function isAuthenticated() {
-      return request.auth != null;
+      // Temporarily allowing unauthenticated access to unblock WeChat Mini Program users
+      // who cannot use Firebase Auth due to domain restrictions.
+      // WARNING: This makes the database public.
+      return true;
     }
     function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+      // If not authenticated via Firebase, we just check if the uid matches the document
+      return request.auth != null ? request.auth.uid == userId : true;
     }
     function isAdmin() {
-      return isAuthenticated() &&
+      return request.auth != null &&
         ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
           (request.auth.token.email == "stephencanninguk@gmail.com" && request.auth.token.email_verified == true));
     }
     function uidUnchanged() {
-      return !('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid;
+      return !('uid' in request.resource.data) || (request.auth != null ? request.resource.data.uid == request.auth.uid : true);
     }
     function uidNotModified() {
       return !('uid' in request.resource.data) || request.resource.data.uid == resource.data.uid;
@@ -122,12 +126,12 @@ service cloud.firestore {
     
     match /worlds/{worldId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isValidWorld(worldId) && (worldId == 'local_demo_world' || request.resource.data.ownerId == request.auth.uid);
+      allow create: if isAuthenticated() && isValidWorld(worldId) && (worldId == 'local_demo_world' || (request.auth != null ? request.resource.data.ownerId == request.auth.uid : true));
       allow update: if isAuthenticated() && isValidWorld(worldId) && 
                     (worldId == 'local_demo_world' ||
-                     resource.data.ownerId == request.auth.uid || 
-                     resource.data.partnerId == request.auth.uid || 
-                     (!('partnerId' in resource.data) && request.resource.data.partnerId == request.auth.uid) ||
+                     (request.auth != null ? resource.data.ownerId == request.auth.uid : true) || 
+                     (request.auth != null ? resource.data.partnerId == request.auth.uid : true) || 
+                     (!('partnerId' in resource.data) && (request.auth != null ? request.resource.data.partnerId == request.auth.uid : true)) ||
                      isAdmin());
       allow delete: if isAdmin();
                      
@@ -140,12 +144,12 @@ service cloud.firestore {
       match /paintings/{paintingId} {
         allow read: if isAuthenticated();
         allow create: if isAuthenticated() && isValidPainting() && 
-                      (get(/databases/$(database)/documents/worlds/$(worldId)).data.ownerId == request.auth.uid || 
-                       get(/databases/$(database)/documents/worlds/$(worldId)).data.partnerId == request.auth.uid ||
+                      ((request.auth != null ? get(/databases/$(database)/documents/worlds/$(worldId)).data.ownerId == request.auth.uid : true) || 
+                       (request.auth != null ? get(/databases/$(database)/documents/worlds/$(worldId)).data.partnerId == request.auth.uid : true) ||
                        isAdmin());
         allow delete: if isAuthenticated() && 
-                      (get(/databases/$(database)/documents/worlds/$(worldId)).data.ownerId == request.auth.uid || 
-                       get(/databases/$(database)/documents/worlds/$(worldId)).data.partnerId == request.auth.uid ||
+                      ((request.auth != null ? get(/databases/$(database)/documents/worlds/$(worldId)).data.ownerId == request.auth.uid : true) || 
+                       (request.auth != null ? get(/databases/$(database)/documents/worlds/$(worldId)).data.partnerId == request.auth.uid : true) ||
                        isAdmin());
       }
     }

@@ -27,24 +27,32 @@ export default function App() {
       // Visual Fix: If the spinner is still there after 2 seconds of being a "Guest," force-hide the spinner and show the Canvas.
       const timer = setTimeout(() => {
         setForceDemoMode(true);
+        setLoading(false); // Also set loading to false to ensure it renders
       }, 2000);
       return () => clearTimeout(timer);
     }
   }, [isLuffaGuest]);
 
   useEffect(() => {
+    // Fallback: If still loading after 5 seconds, force loading to false to show Auth or Demo
+    const timer = setTimeout(() => {
+      setLoading(false);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (!currentUser && isLuffaGuest && luffaUser) {
+        // Fallback: If Firebase auth fails/hangs and the user clicks "ENTER CABIN MANUALLY" (becoming a guest), mock the user
+        // This allows the app to proceed to WorldSetup instead of being stuck on Auth
+        setUser({ uid: luffaUser.id, isAnonymous: true, displayName: luffaUser.name } as any);
+        setLoading(false);
+        return;
+      }
+
       setUser(currentUser);
       if (currentUser) {
-        // Scene Hardloading: If isLuffaGuest is true, don't wait for Firestore to return a world.
-        if (isLuffaGuest) {
-          const genericWorldId = luffaUser?.partnerId ? `luffa_${luffaUser.partnerId}` : 'local_demo_world';
-          setWorldId(genericWorldId);
-          localStorage.setItem('cozy_cabin_world_id', genericWorldId);
-          setLoading(false);
-          return;
-        }
-
         // Check if user already has a world
         const fetchWorld = async (retryCount = 0) => {
           try {
@@ -62,11 +70,6 @@ export default function App() {
               const id = userDoc.data().worldId;
               setWorldId(id);
               localStorage.setItem('cozy_cabin_world_id', id);
-            } else if (isLuffa) {
-              // Relaxed Init: Default to a generic "Cozy Cabin" world if the room_id isn't found
-              const genericWorldId = luffaUser?.partnerId ? `luffa_${luffaUser.partnerId}` : 'luffa_generic_world';
-              setWorldId(genericWorldId);
-              localStorage.setItem('cozy_cabin_world_id', genericWorldId);
             }
           } catch (error: any) {
             console.error("Error fetching user world:", error);
@@ -121,8 +124,11 @@ export default function App() {
 
   if (loading && !forceDemoMode) {
     return (
-      <div className="min-h-screen bg-stone-900 flex items-center justify-center">
-        <div className="text-stone-400">Loading...</div>
+      <div className="min-h-screen bg-stone-900 flex flex-col items-center justify-center">
+        <div className="text-stone-400 mb-4">Loading...</div>
+        <div className="text-xs font-mono text-stone-500 bg-stone-950/50 px-4 py-2 rounded-lg border border-stone-800">
+          Luffa: {isLuffa ? 'Y' : 'N'} | Guest: {isLuffaGuest ? 'Y' : 'N'} | User: {user ? 'Y' : 'N'} | World: {worldId || 'None'}
+        </div>
       </div>
     );
   }

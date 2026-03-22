@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, setPersistence, inMemoryPersistence } from 'firebase/auth';
 import { getFirestore, enableIndexedDbPersistence } from 'firebase/firestore';
 
 // Use import.meta.glob to optionally load the local config file without breaking the build if it's missing
@@ -46,4 +46,14 @@ enableIndexedDbPersistence(db).catch((err) => {
 });
 
 export const auth = getAuth(app);
+
+// Use in-memory persistence to avoid IndexedDB issues in restricted webviews like WeChat Mini Programs
+try {
+  setPersistence(auth, inMemoryPersistence).catch((err) => {
+    console.warn('Failed to set in-memory persistence:', err);
+  });
+} catch (err) {
+  console.warn('Sync error setting in-memory persistence:', err);
+}
+
 export const googleProvider = new GoogleAuthProvider();

@@ -1,11 +1,33 @@
 import { GoogleGenAI } from "@google/genai";
 
-// Initialize the Gemini API
-// The platform injects process.env.GEMINI_API_KEY automatically
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let aiClient: GoogleGenAI | null = null;
+
+const getAIClient = () => {
+  if (!aiClient) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      console.warn("GEMINI_API_KEY is missing. Cozy Bear messages will not be generated.");
+      return null;
+    }
+    aiClient = new GoogleGenAI({ apiKey });
+  }
+  return aiClient;
+};
 
 export const generateBearMessage = async (sharedState: any): Promise<string | null> => {
+  const fallbackMessages = [
+    "I love it when you two spend time together!",
+    "Don't forget to check your tasks for the day.",
+    "The cabin feels so cozy today.",
+    "Teamwork makes the dream work!",
+    "Sending you both a big bear hug!"
+  ];
+  const randomFallback = () => fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)];
+
   try {
+    const ai = getAIClient();
+    if (!ai) return randomFallback();
+
     const lastInteraction = sharedState.lastInteractionAt || Date.now();
     const hoursSince = (Date.now() - lastInteraction) / (1000 * 60 * 60);
     const completedTasks = sharedState.tasks.filter((t: any) => t.completed).length;
@@ -42,9 +64,9 @@ export const generateBearMessage = async (sharedState: any): Promise<string | nu
       }
     });
 
-    return response.text?.trim() || null;
+    return response.text?.trim() || randomFallback();
   } catch (error) {
     console.error("Error generating bear message:", error);
-    return null;
+    return randomFallback();
   }
 };

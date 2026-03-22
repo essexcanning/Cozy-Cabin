@@ -42,7 +42,7 @@ export const LuffaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [debugStatus, setDebugStatus] = useState<string>('Initializing...');
   const pendingTx = useRef<{ resolve: (hash: string) => void; reject: (err: any) => void } | null>(null);
 
-  const sendToLuffa = (message: any) => {
+  const sendToLuffa = React.useCallback((message: any) => {
     const w = window as any;
     console.log('[Luffa Debug] Sending message:', message);
     if (w.wx && w.wx.miniProgram) {
@@ -55,12 +55,12 @@ export const LuffaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     // Always fallback to iframe postMessage for local testing or if Luffa uses iframe
     window.parent.postMessage(message, '*');
-  };
+  }, []);
 
   const forceStart = () => {
     console.log('[Luffa Debug] Force Start triggered.');
     setDebugStatus('Force Start Active');
-    setIsLuffa(false);
+    setIsLuffa(true); // Set to true so App.tsx hardloads the scene
     setIsLuffaGuest(true);
     setLuffaUser({ id: 'guest_user_123', partnerId: 'guest_partner_123', name: 'Guest Player' });
   };
@@ -87,8 +87,67 @@ export const LuffaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     // Check if running in Luffa webview or iframe
-    const w = window as any;
-    const isLuffaEnv = !!w.luffa || window.parent !== window || (w.wx && w.wx.miniProgram);
+    const checkEnv = () => {
+      const w = window as any;
+      return !!w.luffa || window.parent !== window || (w.wx && w.wx.miniProgram);
+    };
+
+    let isLuffaEnv = checkEnv();
+    
+    if (!isLuffaEnv && !isLuffaUrl && !urlUserId) {
+      // Poll for a short time in case the JSSDK is loading asynchronously
+      let checks = 0;
+      const checkInterval = setInterval(() => {
+        checks++;
+        if (checkEnv()) {
+          clearInterval(checkInterval);
+          setIsLuffa(true);
+          setDebugStatus('Luffa Env Detected (Async). Handshaking...');
+          startHandshake();
+        } else if (checks > 10) { // 10 checks * 200ms = 2 seconds
+          clearInterval(checkInterval);
+        }
+      }, 200);
+      
+      // We need to define startHandshake to be called from the interval
+      const startHandshake = () => {
+        let attempts = 0;
+        const pollHandshake = () => {
+          console.log(`[Luffa Debug] Sending LUFFA_GET_APP_INFO (Attempt ${attempts + 1})`);
+          setDebugStatus(`Sending LUFFA_GET_APP_INFO (Attempt ${attempts + 1})`);
+          sendToLuffa({ type: 'LUFFA_GET_APP_INFO' });
+          attempts++;
+          if (attempts >= 20) {
+            clearInterval(interval);
+          }
+        };
+        
+        pollHandshake(); // First immediate attempt
+        const interval = setInterval(pollHandshake, 500);
+        
+        // 3-Second Timeout Fallback
+        setTimeout(() => {
+          setLuffaUser((prev) => {
+            if (!prev) {
+              console.log('[Luffa Debug] Handshake timeout. Proceeding as Guest.');
+              setDebugStatus('Handshake timeout. Proceeding as Guest.');
+              setIsLuffaGuest(true);
+              
+              let guestId = localStorage.getItem('luffa_guest_id');
+              if (!guestId) {
+                guestId = `guest_${Math.random().toString(36).substring(2, 9)}`;
+                localStorage.setItem('luffa_guest_id', guestId);
+              }
+              
+              return { id: guestId, partnerId: 'luffa_guest_partner', name: 'Luffa Guest' };
+            }
+            return prev;
+          });
+        }, 3000);
+      };
+      
+      return () => clearInterval(checkInterval);
+    }
     
     if (isLuffaEnv && !(isLuffaUrl || urlUserId)) {
       setIsLuffa(true);
@@ -198,14 +257,14 @@ export const LuffaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   }, []);
 
-  const refreshBalance = () => {
+  const refreshBalance = React.useCallback(() => {
     if (isLuffa) {
       sendToLuffa({ type: 'LUFFA_GET_BALANCE' });
     } else {
       // Mock balance for local testing
       setEdsBalance(10.5);
     }
-  };
+  }, [isLuffa, sendToLuffa]);
 
   useEffect(() => {
     if (isLuffa) {
@@ -213,21 +272,21 @@ export const LuffaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } else {
       setEdsBalance(10.5); // Mock local
     }
-  }, [isLuffa]);
+  }, [isLuffa, refreshBalance]);
 
-  const sendLuffaNotification = (message: string) => {
+  const sendLuffaNotification = React.useCallback((message: string) => {
     if (isLuffa) {
       sendToLuffa({ type: 'LUFFA_NOTIFICATION', message });
     }
-  };
+  }, [isLuffa, sendToLuffa]);
 
-  const minimizeApp = () => {
+  const minimizeApp = React.useCallback(() => {
     if (isLuffa) {
       sendToLuffa({ type: 'LUFFA_MINIMIZE' });
     }
-  };
+  }, [isLuffa, sendToLuffa]);
 
-  const sendTransaction = (amount: number, to: string): Promise<string> => {
+  const sendTransaction = React.useCallback((amount: number, to: string): Promise<string> => {
     return new Promise((resolve, reject) => {
       if (!isLuffa) {
         // Mock transaction for local testing
@@ -238,7 +297,7 @@ export const LuffaProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       pendingTx.current = { resolve, reject };
       sendToLuffa({ type: 'LUFFA_SEND_TRANSACTION', amount, to });
     });
-  };
+  }, [isLuffa, sendToLuffa]);
 
   return (
     <LuffaContext.Provider value={{ isLuffa, isLuffaGuest, luffaUser, edsBalance, sendLuffaNotification, minimizeApp, sendTransaction, refreshBalance, debugStatus, forceStart }}>

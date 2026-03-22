@@ -20,106 +20,17 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
   const [error, setError] = useState('');
   const { isLuffa, luffaUser } = useLuffa();
 
-  useEffect(() => {
-    const setupLuffaWorld = async () => {
-      if (isLuffa && luffaUser && auth.currentUser) {
-        setLoading(true);
-        try {
-          // Deterministic world ID based on Luffa user ID
-          // Since the prompt says "use that ID to either fetch the existing 'Cozy Cabin' or create a new one"
-          // We will use the luffaUser.id as the primary world ID. 
-          // If a partner joins, they should ideally use the same ID or we use the sorted combination.
-          // Let's stick to the sorted combination if partnerId exists, otherwise just luffaUser.id
-          const worldId = luffaUser.partnerId 
-            ? [luffaUser.id, luffaUser.partnerId].sort().join('_')
-            : `luffa_world_${luffaUser.id}`;
-            
-          const worldRef = doc(db, 'worlds', worldId);
-          const worldSnap = await getDoc(worldRef);
-
-          if (!worldSnap.exists()) {
-            // Create world
-            try {
-              await setDoc(worldRef, {
-                inviteCode: 'LUFFA', // Not used for Luffa
-                ownerId: auth.currentUser.uid,
-                createdAt: serverTimestamp(),
-                shared: {
-                  wood: 0,
-                  cozyCoins: 0,
-                  heartsSent: 0,
-                  tasks: [
-                    { id: 't1', text: 'Send a sweet message', completed: false },
-                    { id: 't2', text: 'Plan a weekend walk', completed: false },
-                    { id: 't3', text: 'Complete a joint check-in', completed: false }
-                  ],
-                  purchasedItems: [],
-                  dateNight: null
-                }
-              });
-            } catch (err) {
-              handleFirestoreError(err, OperationType.WRITE, `worlds/${worldId}`);
-            }
-          } else {
-            // Join world
-            const worldData = worldSnap.data();
-            if (!worldData.partnerId && worldData.ownerId !== auth.currentUser.uid) {
-              try {
-                await setDoc(worldRef, {
-                  partnerId: auth.currentUser.uid
-                }, { merge: true });
-              } catch (err) {
-                handleFirestoreError(err, OperationType.WRITE, `worlds/${worldId}`);
-              }
-            }
-          }
-
-          // Auto-complete user profile for Luffa users to skip customization
-          const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
-          if (!userDoc.exists() || !userDoc.data().hairColor) {
-            try {
-              await setDoc(doc(db, 'users', auth.currentUser.uid), {
-                uid: auth.currentUser.uid,
-                displayName: luffaUser.name || 'Player',
-                worldId: worldId,
-                hairColor: '#4a3018',
-                shirtColor: '#2b5a3f',
-                pantsColor: '#1a1a1a',
-                skinColor: '#f1c27d'
-              }, { merge: true });
-            } catch (err) {
-              handleFirestoreError(err, OperationType.WRITE, `users/${auth.currentUser.uid}`);
-            }
-          } else {
-            try {
-              await setDoc(doc(db, 'users', auth.currentUser.uid), {
-                worldId: worldId,
-                displayName: luffaUser.name || userDoc.data().displayName || 'Player'
-              }, { merge: true });
-            } catch (err) {
-              handleFirestoreError(err, OperationType.WRITE, `users/${auth.currentUser.uid}`);
-            }
-          }
-
-          onWorldJoined(worldId);
-        } catch (err: any) {
-          console.error("Luffa world setup error:", err);
-          setError('Failed to setup Luffa world.');
-        } finally {
-          setLoading(false);
-        }
-      }
-    };
-
-    setupLuffaWorld();
-  }, [isLuffa, luffaUser]);
-
   const generateInviteCode = () => {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
   };
 
   const handleCreateWorld = async () => {
-    if (!auth.currentUser) return;
+    // We allow creation if there's a real user OR a mock user from Luffa fallback
+    const userId = auth.currentUser?.uid || (luffaUser ? luffaUser.id : null);
+    if (!userId) {
+      setError('You must be signed in to create a world. Please check your connection or environment settings.');
+      return;
+    }
     setLoading(true);
     setError('');
     
@@ -131,7 +42,7 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
       try {
         await setDoc(doc(db, 'worlds', newWorldId), {
           inviteCode: code,
-          ownerId: auth.currentUser.uid,
+          ownerId: userId,
           createdAt: serverTimestamp(),
           shared: {
             wood: 0,
@@ -168,7 +79,12 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
 
   const handleJoinWorld = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!auth.currentUser || !inviteCode.trim()) return;
+    const userId = auth.currentUser?.uid || (luffaUser ? luffaUser.id : null);
+    if (!userId) {
+      setError('You must be signed in to join a world. Please check your connection or environment settings.');
+      return;
+    }
+    if (!inviteCode.trim()) return;
     setLoading(true);
     setError('');
 
@@ -196,17 +112,17 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
       const worldData = worldDoc.data();
       const worldId = worldDoc.id;
 
-      if (worldData.ownerId !== auth.currentUser.uid && worldData.partnerId && worldData.partnerId !== auth.currentUser.uid) {
+      if (worldData.ownerId !== userId && worldData.partnerId && worldData.partnerId !== userId) {
         setError('This world is already full (max 2 players).');
         setLoading(false);
         return;
       }
 
       // Add partner if not already set
-      if (!worldData.partnerId && worldData.ownerId !== auth.currentUser.uid) {
+      if (!worldData.partnerId && worldData.ownerId !== userId) {
         try {
           await setDoc(doc(db, 'worlds', worldId), {
-            partnerId: auth.currentUser.uid
+            partnerId: userId
           }, { merge: true });
         } catch (err) {
           handleFirestoreError(err, OperationType.WRITE, `worlds/${worldId}`);
@@ -228,28 +144,29 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
   };
 
   const handleCustomizationComplete = async (customization: any) => {
-    if (!auth.currentUser || !pendingWorldId) return;
+    const userId = auth.currentUser?.uid || (luffaUser ? luffaUser.id : null);
+    if (!userId || !pendingWorldId) return;
     setLoading(true);
     
     try {
       // Update user profile with worldId AND customization
       try {
-        await setDoc(doc(db, 'users', auth.currentUser.uid), {
-          uid: auth.currentUser.uid,
-          displayName: auth.currentUser.displayName || 'Player',
-          email: auth.currentUser.email,
+        await setDoc(doc(db, 'users', userId), {
+          uid: userId,
+          displayName: customization.displayName || auth.currentUser?.displayName || luffaUser?.name || 'Player',
+          email: auth.currentUser?.email || null,
           worldId: pendingWorldId,
           ...customization
         }, { merge: true });
       } catch (err) {
-        handleFirestoreError(err, OperationType.WRITE, `users/${auth.currentUser.uid}`);
+        handleFirestoreError(err, OperationType.WRITE, `users/${userId}`);
       }
 
       onWorldJoined(pendingWorldId);
     } catch (err: any) {
       console.error(err);
       if (err.code === 'permission-denied' || err.message?.includes('insufficient permissions')) {
-        handleFirestoreError(err, OperationType.WRITE, `users/${auth.currentUser.uid}`);
+        handleFirestoreError(err, OperationType.WRITE, `users/${userId}`);
       }
       setError('Failed to save character customization.');
     } finally {
@@ -264,15 +181,6 @@ export const WorldSetup: React.FC<WorldSetupProps> = ({ onWorldJoined }) => {
           onComplete={handleCustomizationComplete} 
           onBack={() => setStep('choose')}
         />
-      </div>
-    );
-  }
-
-  if (isLuffa) {
-    return (
-      <div className="min-h-screen bg-stone-950 flex flex-col items-center justify-center p-4">
-        <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <div className="text-stone-400 font-medium animate-pulse">Setting up your Luffa world...</div>
       </div>
     );
   }
